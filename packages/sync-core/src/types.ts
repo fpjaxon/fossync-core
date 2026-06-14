@@ -1,0 +1,57 @@
+// ---- Playback timeline ----
+export type ControlMode = "host" | "everyone";
+
+export interface Playback {
+  paused: boolean;
+  anchorMediaTime: number; // seconds into the video at the anchor
+  anchorServerTime: number; // DO clock (ms) at the anchor
+  rate: number; // normally 1.0
+}
+
+export interface Participant {
+  id: string;
+  role: "host" | "guest";
+  name: string;
+}
+
+export interface RoomSnapshot {
+  controlMode: ControlMode;
+  hostId: string;
+  playback: Playback;
+  participants: Participant[];
+}
+
+// ---- Wire protocol ----
+export type ControlAction = "play" | "pause" | "seek";
+
+export type ClientMessage =
+  | { type: "hello"; name: string }
+  | { type: "ping"; t0: number }
+  | { type: "control"; action: ControlAction; mediaTime: number }
+  | { type: "setMode"; mode: ControlMode }
+  | { type: "bye" };
+
+export type ServerMessage =
+  | { type: "welcome"; youId: string; snapshot: RoomSnapshot }
+  | { type: "pong"; t0: number; t1: number }
+  | { type: "state"; playback: Playback; controlMode: ControlMode; hostId: string }
+  | { type: "presence"; participants: Participant[] }
+  | { type: "error"; reason: string };
+
+// ---- Player adapter (the service-agnostic seam) ----
+export type UserIntent =
+  | { kind: "play"; mediaTime: number }
+  | { kind: "pause"; mediaTime: number }
+  | { kind: "seek"; mediaTime: number };
+
+export interface PlayerAdapter {
+  getCurrentTime(): number;
+  getDuration(): number;
+  isPaused(): boolean;
+  play(): void;
+  pause(): void;
+  seek(seconds: number): void;
+  setPlaybackRate(rate: number): void;
+  /** Fires only on genuine HUMAN intent — never on our own programmatic calls. */
+  onUserIntent(cb: (intent: UserIntent) => void): void;
+}
