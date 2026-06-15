@@ -38,6 +38,8 @@ export interface Sidebar {
   showReaction(emoji: string): void;
   setInvite(url: string): void;
   setVideo(video: HTMLVideoElement | null): void;
+  /** Show a persistent banner that the room is on a non-official (third-party) relay. */
+  showRelayWarning(origin: string): void;
   /** Prompt for the one user gesture browsers require before programmatic play. */
   showPlayGate(onPlay: () => void): void;
   hidePlayGate(): void;
@@ -85,6 +87,10 @@ export function createSidebar(): Sidebar {
   header.append(el("div", "font-weight:700;color:#fff;", "◆ fossync"), roomLabel, collapseBtn);
 
   const status = el("div", `padding:7px 12px;font:${MONO};color:#3ddc84;border-bottom:1px solid #2a2a30;`, "connecting…");
+
+  const relayWarning = el("div",
+    "display:none;margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:#3a2c00;" +
+    `color:#ffd479;border:1px solid #6b5300;font:${MONO};line-height:1.45;`, "");
 
   const watching = el("div", "padding:3px 12px 8px;display:flex;flex-direction:column;gap:4px;max-height:22%;overflow-y:auto;");
   const feed = el("div", "flex:1;min-height:96px;overflow-y:auto;padding:3px 12px 8px;display:flex;flex-direction:column;gap:4px;");
@@ -139,7 +145,7 @@ export function createSidebar(): Sidebar {
     "▶  Click to watch in sync");
   playGate.addEventListener("click", () => { const cb = gatePlayCb; hidePlayGate(); cb?.(); });
 
-  panel.append(header, status, sectionHead("WATCHING"), watching, sectionHead("FEED"), feed, reactionsBar, chatRow, footer);
+  panel.append(header, status, relayWarning, sectionHead("WATCHING"), watching, sectionHead("FEED"), feed, reactionsBar, chatRow, footer);
   root.append(reactionLayer, tab, panel, playGate);
   document.documentElement.appendChild(root);
 
@@ -188,6 +194,12 @@ export function createSidebar(): Sidebar {
     setRoom: (code) => { pillRoom = code; roomLabel.textContent = "room " + code; updatePill(); },
     setStatus: (text) => { status.textContent = text; },
     setVideo: (v) => { video = v; },
+    showRelayWarning: (origin) => {
+      relayWarning.textContent =
+        `⚠ Third-party relay (${origin}). It can see this room (who's watching, what, chat) ` +
+        "and your IP, and can control playback. Only connect to relays you trust.";
+      relayWarning.style.display = "block";
+    },
     setParticipants: (list, you, hostId) => {
       youId = you;
       pillCount = list.length;

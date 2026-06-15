@@ -1,6 +1,7 @@
 import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
 import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
+import { WORKER_WS_ORIGIN, isOfficialRelay } from "./config";
 import { parseRoomCode, removeInvite, buildInviteUrl } from "./invite";
 import { randomName } from "./name-gen";
 import { getOrCreateName } from "./name-store";
@@ -38,6 +39,8 @@ export function startPageSync(site: SiteModule): void {
   sidebar.onLeave(() => leaveRoom());
   sidebar.onChatSend((text) => client?.sendChat(text));
   sidebar.onReactionSend((emoji) => client?.sendReaction(emoji));
+  // Official builds talk only to fossync.cloud; a build repointed elsewhere warns.
+  if (!isOfficialRelay) sidebar.showRelayWarning(WORKER_WS_ORIGIN);
 
   // Build the per-video sync session. The room connection (client) outlives this,
   // so an episode change just swaps the session/adapter onto the new <video>.
