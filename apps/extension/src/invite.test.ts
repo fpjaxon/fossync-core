@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildInviteUrl, parseRoomCode, INVITE_PARAM } from "./invite";
+import { buildInviteUrl, parseRoomCode, removeInvite, INVITE_PARAM } from "./invite";
 
 describe("buildInviteUrl", () => {
   it("appends #vsync=CODE to a plain page URL", () => {
@@ -29,5 +29,19 @@ describe("parseRoomCode", () => {
 
   it("exposes the param name it uses", () => {
     expect(INVITE_PARAM).toBe("vsync");
+  });
+});
+
+describe("removeInvite", () => {
+  it("strips the #vsync hash, preserving path and query", () => {
+    expect(removeInvite("http://localhost:5173/?room=X#vsync=ABC")).toBe("http://localhost:5173/?room=X");
+  });
+
+  it("removes a plain #vsync hash", () => {
+    expect(removeInvite("http://localhost:5173/#vsync=ABC")).toBe("http://localhost:5173/");
+  });
+
+  it("returns the url unchanged when there is no hash (idempotent)", () => {
+    expect(removeInvite("http://localhost:5173/")).toBe("http://localhost:5173/");
   });
 });

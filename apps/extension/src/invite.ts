@@ -14,3 +14,12 @@ export function parseRoomCode(hash: string): string | null {
   const trimmed = code?.trim();
   return trimmed ? trimmed : null;
 }
+
+export function removeInvite(pageUrl: string): string {
+  const url = new URL(pageUrl);
+  const params = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
+  params.delete(INVITE_PARAM);
+  const rest = params.toString();
+  url.hash = rest ? rest : "";
+  return url.toString();
+}
