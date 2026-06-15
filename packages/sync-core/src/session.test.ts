@@ -62,4 +62,33 @@ describe("SyncSession.tick", () => {
     fireIntent({ kind: "pause", mediaTime: 22 });
     expect(client.sendControl).toHaveBeenCalledWith("pause", 22);
   });
+
+  it("clamps a seek beyond the media duration and skips it when already at the end", () => {
+    const seek = vi.fn();
+    const { adapter } = fakeAdapter({ getCurrentTime: () => 100, getDuration: () => 100, seek });
+    const pastEnd: Playback = { paused: false, anchorMediaTime: 100, anchorServerTime: 0, rate: 1 };
+    const session = new SyncSession({
+      client: fakeClient(pastEnd, 0),
+      adapter,
+      now: () => 1_000_000, // expected ~1100s, far beyond the 100s duration
+      setInterval: () => 0,
+    });
+    session.tick();
+    expect(seek).not.toHaveBeenCalled(); // clamped to 100 == current => no thrash
+  });
+
+  it("clears the interval on stop()", () => {
+    const cleared: unknown[] = [];
+    const { adapter } = fakeAdapter();
+    const session = new SyncSession({
+      client: fakeClient(playing, 0),
+      adapter,
+      now: () => 0,
+      setInterval: () => 42,
+      clearInterval: (h) => cleared.push(h),
+    });
+    session.start();
+    session.stop();
+    expect(cleared).toEqual([42]);
+  });
 });

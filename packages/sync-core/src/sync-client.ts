@@ -21,7 +21,12 @@ export interface SyncClientOptions {
   now: () => number;
   schedule: (fn: () => void, ms: number) => unknown;
   pingCount?: number;
+  resyncMs?: number; // periodic clock re-sync interval; default 30000
 }
+
+const BASE_RECONNECT_MS = 500;
+const MAX_RECONNECT_MS = 10000;
+const DEFAULT_RESYNC_MS = 30000;
 
 export class SyncClient {
   private socket: SocketLike | null = null;
@@ -32,12 +37,16 @@ export class SyncClient {
   private hostId: string | null = null;
   private participants: Participant[] = [];
   private samples: PingSample[] = [];
-  private reconnectMs = 500;
+  private reconnectMs = BASE_RECONNECT_MS;
   private errorCb: ((reason: string) => void) | null = null;
+  private intentionalClose = false;
+  private epoch = 0; // bumped each connect; stale resync callbacks no-op
 
   constructor(private readonly opts: SyncClientOptions) {}
 
   connect(): void {
+    this.epoch++;
+    this.intentionalClose = false;
     this.samples = [];
     const socket = this.opts.createSocket(this.opts.url);
     this.socket = socket;
@@ -48,9 +57,25 @@ export class SyncClient {
   }
 
   private onOpen(): void {
+    this.reconnectMs = BASE_RECONNECT_MS; // #1: a healthy connection resets the backoff
     this.send({ type: "hello", name: this.opts.name });
+    this.startClockSync();
+    this.scheduleResync(this.epoch); // #4: refresh the clock periodically
+  }
+
+  private startClockSync(): void {
+    this.samples = [];
     const count = this.opts.pingCount ?? 5;
     for (let i = 0; i < count; i++) this.send({ type: "ping", t0: this.opts.now() });
+  }
+
+  private scheduleResync(epoch: number): void {
+    const ms = this.opts.resyncMs ?? DEFAULT_RESYNC_MS;
+    this.opts.schedule(() => {
+      if (epoch !== this.epoch || this.socket === null) return; // stale connection
+      this.startClockSync();
+      this.scheduleResync(epoch);
+    }, ms);
   }
 
   private onMessage(ev: { data: string }): void {
@@ -86,8 +111,12 @@ export class SyncClient {
 
   private onClose(): void {
     this.socket = null;
+    if (this.intentionalClose) {
+      this.intentionalClose = false; // #2: leave for good, no reconnect
+      return;
+    }
     this.opts.schedule(() => this.connect(), this.reconnectMs);
-    this.reconnectMs = Math.min(this.reconnectMs * 2, 10000);
+    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS);
   }
 
   private send(msg: ClientMessage): void {
@@ -107,5 +136,11 @@ export class SyncClient {
   }
   setMode(mode: ControlMode): void { this.send({ type: "setMode", mode }); }
   onError(cb: (reason: string) => void): void { this.errorCb = cb; }
-  close(): void { this.socket?.close(); }
+
+  close(): void {
+    // #2 + #6: intentional leave — announce, then close without auto-reconnect.
+    this.intentionalClose = true;
+    this.send({ type: "bye" });
+    this.socket?.close();
+  }
 }

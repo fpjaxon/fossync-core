@@ -12,12 +12,14 @@ export interface SyncSessionOptions {
   adapter: PlayerAdapter;
   now: () => number;
   setInterval: (fn: () => void, ms: number) => unknown;
+  clearInterval?: (handle: unknown) => void;
   cfg?: ReconcileConfig;
   tickMs?: number;
 }
 
 export class SyncSession {
   private readonly cfg: ReconcileConfig;
+  private intervalHandle: unknown = null;
 
   constructor(private readonly opts: SyncSessionOptions) {
     this.cfg = opts.cfg ?? DEFAULT_CONFIG;
@@ -27,7 +29,14 @@ export class SyncSession {
   }
 
   start(): void {
-    this.opts.setInterval(() => this.tick(), this.opts.tickMs ?? 250);
+    this.intervalHandle = this.opts.setInterval(() => this.tick(), this.opts.tickMs ?? 250);
+  }
+
+  stop(): void {
+    if (this.intervalHandle !== null) {
+      this.opts.clearInterval?.(this.intervalHandle);
+      this.intervalHandle = null;
+    }
   }
 
   tick(): void {
@@ -49,7 +58,15 @@ export class SyncSession {
     switch (action.type) {
       case "play": a.play(); break;
       case "pause": a.pause(); break;
-      case "seek": a.seek(action.to); break;
+      case "seek": {
+        let to = action.to;
+        const duration = a.getDuration();
+        if (Number.isFinite(duration) && duration > 0) to = Math.max(0, Math.min(to, duration));
+        // Avoid end-of-video thrash: don't seek if we're already essentially there.
+        if (Math.abs(to - a.getCurrentTime()) <= this.cfg.softThreshold) break;
+        a.seek(to);
+        break;
+      }
       case "setRate": a.setPlaybackRate(action.rate); break;
       case "none": break;
     }

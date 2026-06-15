@@ -11,11 +11,14 @@ export interface MediaElementLike {
   addEventListener(type: string, listener: () => void): void;
 }
 
-const SUPPRESS_WINDOW_MS = 200;
+// Backstop so a programmatic op whose DOM event never arrives (e.g. seeking to the
+// current position emits nothing) cannot suppress a later genuine user event forever.
+const SUPPRESS_BACKSTOP_MS = 3000;
 
 export class Html5VideoAdapter implements PlayerAdapter {
-  private suppressUntil = 0;
   private intentCb: ((intent: UserIntent) => void) | null = null;
+  // Per intent kind: expiry timestamps of programmatic ops still awaiting their DOM event.
+  private readonly pending: Record<UserIntent["kind"], number[]> = { play: [], pause: [], seek: [] };
 
   constructor(
     private readonly el: MediaElementLike,
@@ -26,22 +29,28 @@ export class Html5VideoAdapter implements PlayerAdapter {
     this.el.addEventListener("seeked", () => this.emitIfUser("seek"));
   }
 
-  private emitIfUser(kind: UserIntent["kind"]): void {
-    if (this.now() < this.suppressUntil) return;
-    this.intentCb?.({ kind, mediaTime: this.el.currentTime } as UserIntent);
+  private markProgrammatic(kind: UserIntent["kind"]): void {
+    this.pending[kind].push(this.now() + SUPPRESS_BACKSTOP_MS);
   }
 
-  private suppress(): void {
-    this.suppressUntil = this.now() + SUPPRESS_WINDOW_MS;
+  private emitIfUser(kind: UserIntent["kind"]): void {
+    const q = this.pending[kind];
+    const t = this.now();
+    while (q.length > 0 && q[0]! <= t) q.shift(); // discard expired markers
+    if (q.length > 0) {
+      q.shift(); // pair this event with our programmatic op -> suppress
+      return;
+    }
+    this.intentCb?.({ kind, mediaTime: this.el.currentTime } as UserIntent);
   }
 
   getCurrentTime(): number { return this.el.currentTime; }
   getDuration(): number { return this.el.duration; }
   isPaused(): boolean { return this.el.paused; }
 
-  play(): void { this.suppress(); void this.el.play(); }
-  pause(): void { this.suppress(); this.el.pause(); }
-  seek(seconds: number): void { this.suppress(); this.el.currentTime = seconds; }
+  play(): void { this.markProgrammatic("play"); void this.el.play(); }
+  pause(): void { this.markProgrammatic("pause"); this.el.pause(); }
+  seek(seconds: number): void { this.markProgrammatic("seek"); this.el.currentTime = seconds; }
   setPlaybackRate(rate: number): void { this.el.playbackRate = rate; }
 
   onUserIntent(cb: (intent: UserIntent) => void): void { this.intentCb = cb; }

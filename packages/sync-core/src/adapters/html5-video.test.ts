@@ -36,26 +36,51 @@ describe("Html5VideoAdapter", () => {
     expect(media.playbackRate).toBe(1.05);
   });
 
-  it("suppresses intent for events caused by our own programmatic calls", () => {
+  it("suppresses intent for the event caused by our own programmatic call", () => {
     const { media, adapter, intents } = setup();
-    adapter.seek(30); // programmatic
+    adapter.seek(30);
     expect(media.currentTime).toBe(30);
-    media.emit("seeked"); // the resulting DOM event, inside the window
+    media.emit("seeked");
     expect(intents).toEqual([]);
   });
 
-  it("reports a genuine user action once the suppression window has passed", () => {
+  it("suppresses our programmatic event even when it arrives late (slow buffering)", () => {
     const { media, adapter, intents, advance } = setup();
     adapter.seek(30);
-    advance(300); // past the 200ms window
+    advance(1500); // far past the old 200ms window, still within the backstop
+    media.currentTime = 30;
+    media.emit("seeked");
+    expect(intents).toEqual([]); // recognized as our own, NOT a user seek
+  });
+
+  it("reports a genuine user seek that has no preceding programmatic op", () => {
+    const { media, adapter, intents } = setup();
     media.currentTime = 55;
     media.emit("seeked");
     expect(intents).toEqual([{ kind: "seek", mediaTime: 55 }]);
   });
 
-  it("reports user play/pause", () => {
+  it("emits as user intent once the backstop expires without the event arriving", () => {
     const { media, adapter, intents, advance } = setup();
-    advance(300);
+    adapter.seek(30); // programmatic, but its 'seeked' never fires
+    advance(3500); // past the 3s backstop
+    media.currentTime = 80;
+    media.emit("seeked"); // a fresh, genuine user seek much later
+    expect(intents).toEqual([{ kind: "seek", mediaTime: 80 }]);
+  });
+
+  it("pairs each programmatic op with exactly one event; a second event is user intent", () => {
+    const { media, adapter, intents } = setup();
+    adapter.seek(30);
+    media.currentTime = 30;
+    media.emit("seeked"); // paired with our op -> suppressed
+    media.currentTime = 31;
+    media.emit("seeked"); // no pending op left -> user intent
+    expect(intents).toEqual([{ kind: "seek", mediaTime: 31 }]);
+  });
+
+  it("reports user play/pause", () => {
+    const { media, adapter, intents } = setup();
     media.paused = false;
     media.currentTime = 5;
     media.emit("play");
