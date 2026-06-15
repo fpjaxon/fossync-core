@@ -88,17 +88,12 @@ export default defineContentScript({
       const offset = client.getOffset();
       const pb = client.getPlayback();
       if (offset === null || pb === null) {
-        badge.set(`room ${currentCode}\nconnecting…`);
+        badge.set(`● room ${currentCode} · connecting…`);
         return;
       }
-      badge.set(
-        [
-          `room ${currentCode}`,
-          `offset ${offset.toFixed(0)} ms`,
-          `people ${client.getParticipants().map((p) => p.name).join(", ") || "(none)"}`,
-          `paused ${pb.paused}`,
-        ].join("\n"),
-      );
+      const people = client.getParticipants();
+      const names = people.map((p) => p.name).join(", ");
+      badge.set(`● Synced · room ${currentCode} · ${people.length} watching${names ? ` (${names})` : ""}`);
     }
 
     function handleHash(): void {
