@@ -8,11 +8,12 @@ import { getOrCreateName } from "../src/name-store";
 import { localNameStorage } from "../src/storage";
 
 export default defineContentScript({
-  matches: ["http://localhost:5173/*"],
+  matches: ["http://localhost/*"],
   main() {
-    // The :5173 match pattern should scope injection, but match-pattern hosts
-    // officially can't carry a port — guard by origin so we never run elsewhere.
+    // Match-pattern hosts can't carry a port — a ":5173" match silently fails to
+    // inject in Gecko — so match all of localhost and scope to the harness here.
     if (window.location.origin !== HARNESS_ORIGIN) return;
+    console.log("[fossync] content script active on", window.location.href);
 
     let client: SyncClient | null = null;
     let session: SyncSession | null = null;
@@ -47,6 +48,7 @@ export default defineContentScript({
     }
 
     async function connectTo(code: string): Promise<void> {
+      console.log("[fossync] connecting to room", code, "via", roomSocketUrl(code));
       teardown();
       const gen = generation;
       currentCode = code;
