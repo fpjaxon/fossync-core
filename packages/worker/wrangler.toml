@@ -9,10 +9,6 @@ class_name = "RoomDurableObject"
 
 [[migrations]]
 tag = "v1"
-# DEPLOYMENT CONCERN: new_sqlite_classes crashes the local workerd test pool
-# (workerd 1.20241230.0, vitest-pool-workers 0.5.41) with an internal
-# "inserted row already exists in table" error.  Reverted to new_classes so
-# the test suite runs.  new_classes requires the Workers Paid plan in
-# production; free-plan deployments must wait for a workerd update that fixes
-# the SQLite migration bug before switching to new_sqlite_classes.
-new_classes = ["RoomDurableObject"]
+# SQLite-backed Durable Objects are free-plan compatible and the design's
+# idle-cost rationale depends on them.
+new_sqlite_classes = ["RoomDurableObject"]
