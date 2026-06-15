@@ -26,6 +26,8 @@ interface RoomEnv {
 }
 
 const MAX_NAME_LEN = 64;
+const MAX_CHAT_LEN = 500;
+const MAX_EMOJI_LEN = 16; // an emoji can be several code units (skin tone, ZWJ sequences)
 const CONTROL_ACTIONS = new Set(["play", "pause", "seek"]);
 
 export class RoomDurableObject {
@@ -153,6 +155,11 @@ export class RoomDurableObject {
         if (this.hostId === null) {
           this.hostId = att.id;
           att.role = "host";
+          // Fresh room: anchor at the host's current position (paused) rather than
+          // 0:00, so starting a party doesn't yank the host back to the start.
+          if (typeof msg.mediaTime === "number" && Number.isFinite(msg.mediaTime) && msg.mediaTime > 0) {
+            this.playback = { paused: true, anchorMediaTime: msg.mediaTime, anchorServerTime: Date.now(), rate: 1 };
+          }
           await this.persist();
         }
         ws.serializeAttachment(att);
@@ -199,6 +206,19 @@ export class RoomDurableObject {
         this.controlMode = msg.mode;
         await this.persist();
         this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
+        break;
+      }
+      case "chat": {
+        // Relayed in real time to everyone (incl. sender); never stored.
+        const text = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_CHAT_LEN) : "";
+        if (!text) return;
+        this.broadcast({ type: "chat", from: { id: att.id, name: att.name }, text });
+        break;
+      }
+      case "reaction": {
+        const emoji = typeof msg.emoji === "string" ? msg.emoji.slice(0, MAX_EMOJI_LEN) : "";
+        if (!emoji) return;
+        this.broadcast({ type: "reaction", from: { id: att.id, name: att.name }, emoji });
         break;
       }
       case "bye": {

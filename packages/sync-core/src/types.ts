@@ -31,10 +31,12 @@ export interface RoomSnapshot {
 export type ControlAction = "play" | "pause" | "seek";
 
 export type ClientMessage =
-  | { type: "hello"; name: string }
+  | { type: "hello"; name: string; mediaTime?: number }
   | { type: "ping"; t0: number }
   | { type: "control"; action: ControlAction; mediaTime: number }
   | { type: "setMode"; mode: ControlMode }
+  | { type: "chat"; text: string }
+  | { type: "reaction"; emoji: string }
   | { type: "bye" };
 
 export type ServerMessage =
@@ -42,6 +44,8 @@ export type ServerMessage =
   | { type: "pong"; t0: number; t1: number }
   | { type: "state"; playback: Playback; controlMode: ControlMode; hostId: string; actor?: Actor }
   | { type: "presence"; participants: Participant[] }
+  | { type: "chat"; from: Actor; text: string }
+  | { type: "reaction"; from: Actor; emoji: string }
   | { type: "error"; reason: string };
 
 // ---- Player adapter (the service-agnostic seam) ----

@@ -256,3 +256,51 @@ describe("RoomDurableObject ephemerality", () => {
     });
   });
 });
+
+describe("RoomDurableObject seeding + chat + reactions", () => {
+  it("anchors a fresh room at the host's media time from hello (not 0)", async () => {
+    const a = await connect("SEED01");
+    send(a, { type: "hello", name: "Alice", mediaTime: 123 });
+    const welcome = await nextMessage(a, (m) => m.type === "welcome");
+    if (welcome.type !== "welcome") throw new Error("bad");
+    expect(welcome.snapshot.playback.anchorMediaTime).toBe(123);
+    expect(welcome.snapshot.playback.paused).toBe(true);
+    a.close();
+  });
+
+  it("relays chat to other participants with attribution, trimmed", async () => {
+    const a = await connect("CHAT01");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+    const b = await connect("CHAT01");
+    send(b, { type: "hello", name: "Bob" });
+    await nextMessage(b, (m) => m.type === "welcome");
+
+    const chatP = nextMessage(b, (m) => m.type === "chat");
+    send(a, { type: "chat", text: "  hello world  " });
+    const chat = await chatP;
+    if (chat.type !== "chat") throw new Error("bad");
+    expect(chat.text).toBe("hello world");
+    expect(chat.from.name).toBe("Alice");
+    a.close();
+    b.close();
+  });
+
+  it("relays reactions with attribution", async () => {
+    const a = await connect("RX01");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+    const b = await connect("RX01");
+    send(b, { type: "hello", name: "Bob" });
+    await nextMessage(b, (m) => m.type === "welcome");
+
+    const rxP = nextMessage(b, (m) => m.type === "reaction");
+    send(a, { type: "reaction", emoji: "🔥" });
+    const rx = await rxP;
+    if (rx.type !== "reaction") throw new Error("bad");
+    expect(rx.emoji).toBe("🔥");
+    expect(rx.from.name).toBe("Alice");
+    a.close();
+    b.close();
+  });
+});

@@ -157,4 +157,43 @@ describe("SyncClient", () => {
     scheduled.filter((s) => s.ms === 30000).at(-1)!.fn(); // fire the resync
     expect(socket.sentMessages().filter((m) => m.type === "ping")).toHaveLength(3);
   });
+
+  it("includes the current media time in hello when getMediaTime is provided", () => {
+    const sockets: FakeSocket[] = [];
+    const client = new SyncClient({
+      url: "ws://x/room/ABC",
+      name: "Host",
+      pingCount: 1,
+      createSocket: () => { const s = new FakeSocket(); sockets.push(s); return s; },
+      now: () => 1000,
+      schedule: () => 0,
+      getMediaTime: () => 87.5,
+    });
+    client.connect();
+    sockets[0]!.emit("open");
+    expect(sockets[0]!.sentMessages()[0]).toEqual({ type: "hello", name: "Host", mediaTime: 87.5 });
+  });
+
+  it("sends chat and reactions, and surfaces incoming ones via callbacks", () => {
+    const { latest, client } = setup();
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    socket.sent.length = 0;
+    client.sendChat("hello there");
+    client.sendReaction("😂");
+    expect(socket.sentMessages()).toEqual([
+      { type: "chat", text: "hello there" },
+      { type: "reaction", emoji: "😂" },
+    ]);
+
+    let chat: { from: { id: string; name: string }; text: string } | null = null;
+    let reaction: { from: { id: string; name: string }; emoji: string } | null = null;
+    client.onChat((m) => (chat = m));
+    client.onReaction((m) => (reaction = m));
+    socket.serverSend({ type: "chat", from: { id: "u2", name: "Bob" }, text: "hi" });
+    socket.serverSend({ type: "reaction", from: { id: "u2", name: "Bob" }, emoji: "🔥" });
+    expect(chat).toEqual({ from: { id: "u2", name: "Bob" }, text: "hi" });
+    expect(reaction).toEqual({ from: { id: "u2", name: "Bob" }, emoji: "🔥" });
+  });
 });
