@@ -11,8 +11,8 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const nameInput = $("name") as HTMLInputElement;
 const idleView = $("idle");
 const syncedView = $("synced");
+const capacityView = $("capacity");
 const roomLabel = $("room");
-const inviteInput = $("invite") as HTMLInputElement;
 const statusEl = $("status");
 
 let currentName = "";
@@ -26,16 +26,23 @@ async function activeTab() {
   return tab;
 }
 
-function showSynced(code: string, inviteUrl: string): void {
+function showSynced(code: string): void {
   roomLabel.textContent = code;
-  inviteInput.value = inviteUrl;
+  capacityView.classList.add("hidden");
   idleView.classList.add("hidden");
   syncedView.classList.remove("hidden");
 }
 
 function showIdle(): void {
+  capacityView.classList.add("hidden");
   syncedView.classList.add("hidden");
   idleView.classList.remove("hidden");
+}
+
+function showCapacity(): void {
+  idleView.classList.add("hidden");
+  syncedView.classList.add("hidden");
+  capacityView.classList.remove("hidden");
 }
 
 // Popup state is derived from the active tab's #vsync, so it survives open/close.
@@ -43,7 +50,7 @@ async function render(): Promise<void> {
   try {
     const tab = await activeTab();
     const code = tab?.url ? parseRoomCode(new URL(tab.url).hash) : null;
-    if (tab?.url && code) showSynced(code, tab.url);
+    if (tab?.url && code) showSynced(code);
     else showIdle();
   } catch {
     showIdle();
@@ -74,10 +81,15 @@ $("startSync").addEventListener("click", async () => {
   try {
     const tab = await activeTab();
     if (!tab?.id || !tab.url || !isSupportedContentUrl(tab.url)) {
-      setStatus("open the harness or a YouTube video, then Start Sync");
+      setStatus("open the harness, a YouTube video, or a Crunchyroll episode, then Start Sync");
       return;
     }
     const res = await fetch(newRoomUrl());
+    if (res.status === 503) {
+      showCapacity();
+      setStatus("");
+      return;
+    }
     if (!res.ok) {
       setStatus(`couldn't start (${res.status})`);
       return;
@@ -89,8 +101,8 @@ $("startSync").addEventListener("click", async () => {
     }
     const invite = buildInviteUrl(tab.url, body.code);
     await browser.tabs.update(tab.id, { url: invite });
-    showSynced(body.code, invite);
-    setStatus("synced — share the link");
+    showSynced(body.code);
+    setStatus("synced — manage from the page panel");
   } catch (e) {
     setStatus(`failed: ${String(e)}`);
   }
@@ -104,17 +116,6 @@ $("stop").addEventListener("click", async () => {
     setStatus("stopped");
   } catch (e) {
     setStatus(`failed: ${String(e)}`);
-  }
-});
-
-$("copy").addEventListener("click", async () => {
-  if (!inviteInput.value) return;
-  try {
-    await navigator.clipboard.writeText(inviteInput.value);
-    setStatus("link copied");
-  } catch {
-    inviteInput.select();
-    setStatus("press Ctrl+C to copy");
   }
 });
 

@@ -1,9 +1,12 @@
 import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
+import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
-import { parseRoomCode } from "./invite";
+import { parseRoomCode, removeInvite } from "./invite";
 import { randomName } from "./name-gen";
 import { getOrCreateName } from "./name-store";
 import { localNameStorage } from "./storage";
+import { createSidebar } from "./sidebar";
+import { derivePresenceEvents, deriveStateEvents, type StateSnap } from "./activity";
 
 export interface SiteModule {
   /** Resolve the page's main media element (site-specific selection + waiting). */
@@ -15,28 +18,44 @@ export interface SiteModule {
 export function startPageSync(site: SiteModule): void {
   let client: SyncClient | null = null;
   let session: SyncSession | null = null;
-  let badgeTimer: number | null = null;
+  let tickTimer: number | null = null;
   let stopAds: (() => void) | null = null;
   let currentCode: string | null = null;
   let adPlaying = false;
   let generation = 0;
-  const badge = createBadge();
+  // Feed-diff baselines; null until the room is joined (post-welcome) so we don't
+  // announce people/state that were already there when you connected.
+  let prevParticipants: Participant[] | null = null;
+  let prevState: StateSnap | null = null;
+
+  const sidebar = createSidebar();
+  sidebar.onLeave(() => leaveRoom());
 
   function teardown(): void {
     generation++; // invalidate any in-flight connectTo
-    if (badgeTimer !== null) {
-      window.clearInterval(badgeTimer);
-      badgeTimer = null;
+    if (tickTimer !== null) {
+      window.clearInterval(tickTimer);
+      tickTimer = null;
     }
     if (stopAds) {
       stopAds();
       stopAds = null;
     }
     adPlaying = false;
+    prevParticipants = null;
+    prevState = null;
     session?.stop();
     session = null;
     client?.close();
     client = null;
+  }
+
+  // Leaving = drop the room code from the URL; the page goes back to plain content.
+  function leaveRoom(): void {
+    currentCode = null;
+    teardown();
+    history.replaceState(null, "", removeInvite(window.location.href));
+    sidebar.hide();
   }
 
   async function connectTo(code: string): Promise<void> {
@@ -44,13 +63,15 @@ export function startPageSync(site: SiteModule): void {
     teardown();
     const gen = generation;
     currentCode = code;
-    badge.show();
-    badge.set(`● room ${code} · looking for video…`);
+    sidebar.setRoom(code);
+    sidebar.setInvite(window.location.href);
+    sidebar.setStatus("● looking for video…");
+    sidebar.show();
     const video = await site.findVideo();
     if (gen !== generation) return; // superseded
     if (!video) {
       currentCode = null; // allow a later hashchange to retry once a video mounts
-      badge.set(`● room ${code} · no video on this page`);
+      sidebar.setStatus("● no video found on this page");
       return;
     }
     const name = await getOrCreateName(localNameStorage, () => randomName());
@@ -77,28 +98,35 @@ export function startPageSync(site: SiteModule): void {
       stopAds = site.watchAds(video, (playing) => {
         adPlaying = playing;
         session?.setPaused(playing);
-        renderBadge();
       });
     }
-    badgeTimer = window.setInterval(renderBadge, 250);
-    renderBadge();
+    tickTimer = window.setInterval(tick, 250);
+    tick();
   }
 
-  function renderBadge(): void {
+  function tick(): void {
     if (!client) return;
-    if (adPlaying) {
-      badge.set(`● ad — sync paused · room ${currentCode}`);
-      return;
-    }
-    const offset = client.getOffset();
+    const youId = client.getYouId();
+    const hostId = client.getHostId();
+    const participants = client.getParticipants();
     const pb = client.getPlayback();
-    if (offset === null || pb === null) {
-      badge.set(`● room ${currentCode} · connecting…`);
-      return;
+
+    if (adPlaying) sidebar.setStatus("● ad — sync paused");
+    else if (youId === null || pb === null) sidebar.setStatus("● connecting…");
+    else sidebar.setStatus(`● synced · ${participants.length} watching`);
+
+    sidebar.setParticipants(participants, youId, hostId);
+
+    if (youId === null) return; // not in the room yet — no feed baseline / events
+    const nameOf = (id: string) => participants.find((p) => p.id === id)?.name ?? null;
+    const events = derivePresenceEvents(prevParticipants, participants);
+    prevParticipants = participants;
+    if (pb) {
+      const snap: StateSnap = { playback: pb, hostId: hostId ?? "" };
+      events.push(...deriveStateEvents(prevState, snap, client.getActor(), youId, nameOf));
+      prevState = snap;
     }
-    const people = client.getParticipants();
-    const names = people.map((p) => p.name).join(", ");
-    badge.set(`● Synced · room ${currentCode} · ${people.length} watching${names ? ` (${names})` : ""}`);
+    if (events.length) sidebar.addEvents(events);
   }
 
   function handleHash(): void {
@@ -108,41 +136,11 @@ export function startPageSync(site: SiteModule): void {
     } else {
       currentCode = null;
       teardown();
-      badge.hide();
+      sidebar.hide();
     }
   }
 
   window.addEventListener("hashchange", handleHash);
   window.addEventListener("pagehide", teardown);
   handleHash();
-}
-
-function createBadge() {
-  const el = document.createElement("div");
-  el.style.cssText = [
-    "position:fixed",
-    "top:8px",
-    "right:8px",
-    "z-index:2147483647",
-    "background:#111",
-    "color:#0f0",
-    "font:12px ui-monospace,monospace",
-    "white-space:pre",
-    "padding:6px 8px",
-    "border-radius:4px",
-    "pointer-events:none",
-    "display:none",
-  ].join(";");
-  document.documentElement.appendChild(el);
-  return {
-    set: (text: string) => {
-      el.textContent = text;
-    },
-    show: () => {
-      el.style.display = "block";
-    },
-    hide: () => {
-      el.style.display = "none";
-    },
-  };
 }

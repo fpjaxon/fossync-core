@@ -5,15 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>fossync</title>
     <style>
-      body { font-family: system-ui, sans-serif; width: 320px; margin: 0; padding: 10px; }
+      body { font-family: system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; }
       .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
       label { font-size: 12px; flex: 1; display: flex; gap: 6px; align-items: center; }
       input { flex: 1; min-width: 0; }
       button { cursor: pointer; }
       .hidden { display: none; }
-      #invite { font: 11px ui-monospace, monospace; }
       #room { font-weight: 600; }
-      #status { font: 12px ui-monospace, monospace; color: #444; margin-top: 6px; min-height: 1.2em; }
+      .hint { font-size: 12px; color: #666; line-height: 1.4; margin: 6px 0; }
+      #status { font: 12px ui-monospace, monospace; color: #444; margin-top: 8px; min-height: 1.2em; }
+      #capacity { text-align: center; padding: 10px 4px 4px; }
+      #capacity .sad { font-size: 34px; line-height: 1; }
+      #capacity .cap-msg { font-size: 13px; color: #444; line-height: 1.5; margin-top: 8px; }
     </style>
   </head>
   <body>
@@ -29,12 +32,18 @@
     </div>
 
     <div id="synced" class="hidden">
-      <div class="row">Synced — room <span id="room"></span></div>
-      <div class="row">
-        <input id="invite" readonly />
-        <button id="copy">Copy</button>
+      <div class="row">● Synced — room <span id="room"></span></div>
+      <div class="hint">Invite people, see who's watching, and leave from the fossync panel on the page →</div>
+      <div class="row"><button id="stop">Stop sync</button></div>
+    </div>
+
+    <div id="capacity" class="hidden">
+      <div class="sad">😔</div>
+      <div class="cap-msg">
+        fossync Cloud is at capacity right now — there are more watch parties
+        running than we can host. We're working on making room. Please check back
+        in a little while.
       </div>
-      <div class="row"><button id="stop">Stop</button></div>
     </div>
 
     <div id="status"></div>
