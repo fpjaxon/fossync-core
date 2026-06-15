@@ -2,28 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>fossync harness</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fossync — test content</title>
     <style>
-      body { font-family: system-ui, sans-serif; margin: 1rem; }
-      video { width: 100%; max-width: 640px; background: #000; }
-      #overlay { font-family: ui-monospace, monospace; white-space: pre; background: #111; color: #0f0; padding: 0.5rem; margin-top: 0.5rem; }
-      .row { margin: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; }
+      body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 720px; }
+      video { width: 100%; background: #000; border-radius: 6px; }
+      p { color: #555; font-size: 14px; }
     </style>
   </head>
   <body>
-    <div class="row">
-      <label>Room <input id="room" value="TEST01" /></label>
-      <label>Name <input id="name" value="Guest" /></label>
-      <button id="join">Join</button>
-      <button id="modeToggle">Toggle control mode</button>
-    </div>
-    <div class="row">Share: <a id="share" href="#">(join to get a shareable link)</a></div>
-    <!-- muted: a late-join programmatic play() fires outside a user gesture, and muted
-         autoplay is universally allowed. No crossorigin: we never read pixels, and it
-         would couple loading to the remote host returning CORS headers. -->
+    <h1>fossync — test content</h1>
+    <p>This page is just a video. Open the fossync extension and press <b>Start Sync</b> to begin a watch party.</p>
     <video id="video" controls muted playsinline
       src="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"></video>
-    <div id="overlay">not connected</div>
-    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
