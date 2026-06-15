@@ -6,3 +6,6 @@ dist/
 *.log
 .DS_Store
 .omc/
+.claude/
+# Internal design docs / AI-workflow artifacts — kept locally, not published.
+docs/superpowers/

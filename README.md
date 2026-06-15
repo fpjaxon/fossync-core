@@ -72,14 +72,16 @@ actually stay locked on a real video" check is inherently visual:
    `server error: not authorized to control`).
 6. Close the host tab. **Expected:** the remaining tab becomes `host`.
 
-## Design & plan
-
-- Spec: `docs/superpowers/specs/2026-06-14-fossync-engine-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-06-14-fossync-engine.md`
-
 ## Deferred (not in v1)
 
 Chat; real streaming-service adapters + browser-extension packaging; user
 accounts; "wait-for-slowest" buffering; freezing the playback anchor when a room
 empties (a joiner to a long-idle room that was left playing will hard-seek to the
 clamped end until someone issues a fresh control).
+
+## License
+
+fossync is available to the public under the [PolyForm Noncommercial License
+1.0.0](./LICENSE): any noncommercial purpose is permitted. Commercial use rights
+are reserved exclusively by Floatpoint, LLC — for commercial licensing, contact
+jaxon@floatpoint.net.
