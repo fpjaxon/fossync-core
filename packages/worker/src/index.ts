@@ -37,6 +37,12 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
+    // A browser hitting the bare API domain → the marketing site. The API routes
+    // below (/new, /room/:code) use their own paths and are unaffected.
+    if (url.pathname === "/") {
+      return Response.redirect("https://fossync.com/", 302);
+    }
+
     if (url.pathname === "/new") {
       const res = await registry(env).fetch("https://registry/count");
       const { count } = (await res.json()) as { count: number };

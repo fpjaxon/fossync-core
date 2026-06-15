@@ -31,6 +31,12 @@ describe("router", () => {
     expect(res.status).toBe(404);
   });
 
+  it("redirects a browser hitting the root to the marketing site (API untouched)", async () => {
+    const res = await SELF.fetch("https://fossync.cloud/", { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://fossync.com/");
+  });
+
   it("rejects a non-websocket request to a room", async () => {
     const res = await SELF.fetch("https://example.com/room/ABC123");
     expect(res.status).toBe(426);
