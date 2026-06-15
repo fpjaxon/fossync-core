@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Video Sync Harness</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 1rem; }
+      video { width: 100%; max-width: 640px; background: #000; }
+      #overlay { font-family: ui-monospace, monospace; white-space: pre; background: #111; color: #0f0; padding: 0.5rem; margin-top: 0.5rem; }
+      .row { margin: 0.5rem 0; display: flex; gap: 0.5rem; align-items: center; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <label>Room <input id="room" value="TEST01" /></label>
+      <label>Name <input id="name" value="Guest" /></label>
+      <button id="join">Join</button>
+      <button id="modeToggle">Toggle control mode</button>
+    </div>
+    <video id="video" controls crossorigin="anonymous"
+      src="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"></video>
+    <div id="overlay">not connected</div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -12,6 +12,19 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  apps/harness:
+    dependencies:
+      '@video-sync/sync-core':
+        specifier: workspace:*
+        version: link:../../packages/sync-core
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.2
+        version: 5.4.21(@types/node@25.9.3)
+
   packages/sync-core:
     devDependencies:
       typescript:

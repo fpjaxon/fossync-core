@@ -1,0 +1,19 @@
+{
+  "name": "@video-sync/harness",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no unit tests (manual harness)\" && exit 0"
+  },
+  "dependencies": {
+    "@video-sync/sync-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}
