@@ -38,6 +38,22 @@ pnpm -F @video-sync/worker dev     # backend on http://localhost:8787
 pnpm -F @video-sync/harness dev    # harness on http://localhost:5173
 ```
 
+## Firefox extension (staging)
+
+A WXT-based Firefox extension whose popup runs a live `SyncClient` (proving
+`sync-core` bundles + runs in an extension) and can open the harness in the same
+room. It does **not** yet inject into streaming sites — that's the next phase.
+
+```bash
+pnpm -F @video-sync/extension dev     # launches Firefox with the extension (HMR)
+pnpm -F @video-sync/extension build   # bundles to apps/extension/.output/firefox-mv2/
+```
+
+Manual check (with the worker on :8787 and harness on :5173 running): open the
+toolbar popup → **New** / **Connect** → the panel shows a live `offset (ms)` and
+participant list → **Open harness** opens a tab in the same room; playing/seeking
+in the harness is reflected in the popup's playback stats.
+
 ## Manual end-to-end check (requires a browser)
 
 The distributed sync correctness is covered by unit tests, but the "do two tabs
