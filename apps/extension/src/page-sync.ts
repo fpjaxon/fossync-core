@@ -1,7 +1,7 @@
 import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
 import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
-import { parseRoomCode, removeInvite } from "./invite";
+import { parseRoomCode, removeInvite, buildInviteUrl } from "./invite";
 import { randomName } from "./name-gen";
 import { getOrCreateName } from "./name-store";
 import { localNameStorage } from "./storage";
@@ -13,19 +13,24 @@ export interface SiteModule {
   findVideo(): Promise<HTMLVideoElement | null>;
   /** Optional ad detection: call onAd(true/false); return a cleanup fn. */
   watchAds?(video: HTMLVideoElement, onAd: (adPlaying: boolean) => void): () => void;
+  /** Optional: detect in-page navigation to a different media URL (SPA episode changes). */
+  watchNavigation?(onNavigate: (url: string) => void): () => void;
 }
+
+const cleanUrl = (u: string): string => u.split("#")[0]!;
 
 export function startPageSync(site: SiteModule): void {
   let client: SyncClient | null = null;
   let session: SyncSession | null = null;
   let adapter: Html5VideoAdapter | null = null;
+  let currentVideo: HTMLVideoElement | null = null;
   let tickTimer: number | null = null;
   let stopAds: (() => void) | null = null;
+  let stopNav: (() => void) | null = null;
   let currentCode: string | null = null;
   let adPlaying = false;
   let generation = 0;
-  // Feed-diff baselines; null until the room is joined (post-welcome) so we don't
-  // announce people/state that were already there when you connected.
+  // Feed-diff baselines; null until the room is joined (post-welcome).
   let prevParticipants: Participant[] | null = null;
   let prevState: StateSnap | null = null;
 
@@ -34,22 +39,55 @@ export function startPageSync(site: SiteModule): void {
   sidebar.onChatSend((text) => client?.sendChat(text));
   sidebar.onReactionSend((emoji) => client?.sendReaction(emoji));
 
-  function teardown(): void {
-    generation++; // invalidate any in-flight connectTo
-    if (tickTimer !== null) {
-      window.clearInterval(tickTimer);
-      tickTimer = null;
+  // Build the per-video sync session. The room connection (client) outlives this,
+  // so an episode change just swaps the session/adapter onto the new <video>.
+  function attachVideo(video: HTMLVideoElement): void {
+    currentVideo = video;
+    sidebar.setVideo(video);
+    adapter = new Html5VideoAdapter(video);
+    // Browsers block our programmatic play() until the joiner makes a gesture.
+    adapter.onPlayBlocked(() => sidebar.showPlayGate(() => adapter?.play()));
+    session = new SyncSession({
+      client: client!,
+      adapter,
+      now: () => Date.now(),
+      setInterval: (fn, ms) => window.setInterval(fn, ms),
+      clearInterval: (h) => window.clearInterval(h as number),
+    });
+    session.start();
+    if (site.watchAds) {
+      stopAds = site.watchAds(video, (playing) => {
+        adPlaying = playing;
+        session?.setPaused(playing);
+      });
     }
+  }
+
+  function detachVideo(): void {
     if (stopAds) {
       stopAds();
       stopAds = null;
     }
     adPlaying = false;
-    prevParticipants = null;
-    prevState = null;
     session?.stop();
     session = null;
     adapter = null;
+    currentVideo = null;
+  }
+
+  function teardown(): void {
+    generation++; // invalidate any in-flight connectTo / reattach
+    if (tickTimer !== null) {
+      window.clearInterval(tickTimer);
+      tickTimer = null;
+    }
+    if (stopNav) {
+      stopNav();
+      stopNav = null;
+    }
+    prevParticipants = null;
+    prevState = null;
+    detachVideo();
     client?.close();
     client = null;
   }
@@ -78,7 +116,6 @@ export function startPageSync(site: SiteModule): void {
       sidebar.setStatus("● no video found on this page");
       return;
     }
-    sidebar.setVideo(video);
     const name = await getOrCreateName(localNameStorage, () => randomName());
     if (gen !== generation) return; // superseded
     client = new SyncClient({
@@ -88,32 +125,51 @@ export function startPageSync(site: SiteModule): void {
       createSocket: (url) => new WebSocket(url),
       now: () => Date.now(),
       schedule: (fn, ms) => window.setTimeout(fn, ms),
-      getMediaTime: () => video.currentTime,
+      getMediaTime: () => currentVideo?.currentTime ?? 0,
     });
     client.onError((reason) => console.warn("[fossync] server error:", reason));
     client.onChat((m) => sidebar.addChat(m));
     client.onReaction((m) => sidebar.showReaction(m.emoji));
+    client.onContent((url) => followContent(url));
     client.connect();
-    adapter = new Html5VideoAdapter(video);
-    // The room may already be playing; browsers block our programmatic play() until
-    // the joiner makes a gesture, so prompt for one click that plays in sync.
-    adapter.onPlayBlocked(() => sidebar.showPlayGate(() => adapter?.play()));
-    session = new SyncSession({
-      client,
-      adapter,
-      now: () => Date.now(),
-      setInterval: (fn, ms) => window.setInterval(fn, ms),
-      clearInterval: (h) => window.clearInterval(h as number),
-    });
-    session.start();
-    if (site.watchAds) {
-      stopAds = site.watchAds(video, (playing) => {
-        adPlaying = playing;
-        session?.setPaused(playing);
-      });
-    }
+    attachVideo(video);
+    if (site.watchNavigation) stopNav = site.watchNavigation((url) => onLocalNav(url));
     tickTimer = window.setInterval(tick, 250);
     tick();
+  }
+
+  // We navigated to a different media URL inside the SPA (e.g. Crunchyroll next episode).
+  function onLocalNav(url: string): void {
+    if (!currentCode || !client) return;
+    const clean = cleanUrl(url);
+    const withCode = buildInviteUrl(clean, currentCode);
+    if (window.location.href !== withCode) history.replaceState(null, "", withCode); // re-add the room code Crunchyroll dropped
+    sidebar.setInvite(withCode);
+    client.setContent(clean); // server gates by control mode + resets the timeline
+    detachVideo();
+    void reattach(generation);
+  }
+
+  async function reattach(gen: number): Promise<void> {
+    sidebar.setStatus("● switching episode…");
+    const video = await site.findVideo();
+    if (gen !== generation || !currentCode) return; // superseded / left
+    if (video) attachVideo(video);
+    else sidebar.setStatus("● no video found on this page");
+  }
+
+  // Someone else moved the room to different content — follow them via a full reload.
+  function followContent(url: string): void {
+    if (!currentCode || !url) return;
+    let target: URL;
+    try {
+      target = new URL(url);
+    } catch {
+      return;
+    }
+    if (target.origin !== window.location.origin) return; // never navigate off-site
+    if (target.pathname === window.location.pathname) return; // already on this content
+    window.location.assign(buildInviteUrl(cleanUrl(url), currentCode));
   }
 
   function tick(): void {

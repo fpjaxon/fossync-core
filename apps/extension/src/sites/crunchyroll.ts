@@ -6,6 +6,19 @@ import type { SiteModule } from "../page-sync";
 // tier is paid and ad-free, so there is no ad state to handle.
 export const crunchyrollSite: SiteModule = {
   findVideo: () => waitForVideo(),
+
+  // Crunchyroll is a SPA: episode changes swap the URL (and drop our #vsync hash)
+  // without a reload. Poll the watch path so we can follow the host to a new episode.
+  watchNavigation(onNavigate) {
+    let last = location.pathname;
+    const id = window.setInterval(() => {
+      if (location.pathname !== last && location.pathname.startsWith("/watch/")) {
+        last = location.pathname;
+        onNavigate(location.href.split("#")[0]!);
+      }
+    }, 500);
+    return () => window.clearInterval(id);
+  },
 };
 
 // The SPA + Bitmovin player boot after navigation; poll for the player's <video>.
