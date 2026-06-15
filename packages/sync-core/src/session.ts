@@ -15,17 +15,25 @@ export interface SyncSessionOptions {
   clearInterval?: (handle: unknown) => void;
   cfg?: ReconcileConfig;
   tickMs?: number;
+  intentGraceMs?: number;
 }
+
+const DEFAULT_INTENT_GRACE_MS = 1000;
 
 export class SyncSession {
   private readonly cfg: ReconcileConfig;
   private intervalHandle: unknown = null;
+  private suppressReconcileUntil = 0;
 
   constructor(private readonly opts: SyncSessionOptions) {
     this.cfg = opts.cfg ?? DEFAULT_CONFIG;
-    opts.adapter.onUserIntent((intent) =>
-      opts.client.sendControl(intent.kind as ControlAction, intent.mediaTime),
-    );
+    opts.adapter.onUserIntent((intent) => {
+      opts.client.sendControl(intent.kind as ControlAction, intent.mediaTime);
+      // Don't let the reconcile loop fight the user before the authoritative echo
+      // lands (matters when RTT > tick): briefly pause reconciliation so a tick
+      // can't revert the local play/pause/seek the user just performed.
+      this.suppressReconcileUntil = opts.now() + (opts.intentGraceMs ?? DEFAULT_INTENT_GRACE_MS);
+    });
   }
 
   start(): void {
@@ -40,6 +48,7 @@ export class SyncSession {
   }
 
   tick(): void {
+    if (this.opts.now() < this.suppressReconcileUntil) return;
     const pb = this.opts.client.getPlayback();
     const offset = this.opts.client.getOffset();
     if (pb === null || offset === null) return;

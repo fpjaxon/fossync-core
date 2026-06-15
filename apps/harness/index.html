@@ -17,7 +17,11 @@
       <button id="join">Join</button>
       <button id="modeToggle">Toggle control mode</button>
     </div>
-    <video id="video" controls crossorigin="anonymous"
+    <div class="row">Share: <a id="share" href="#">(join to get a shareable link)</a></div>
+    <!-- muted: a late-join programmatic play() fires outside a user gesture, and muted
+         autoplay is universally allowed. No crossorigin: we never read pixels, and it
+         would couple loading to the remote host returning CORS headers. -->
+    <video id="video" controls muted playsinline
       src="https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4"></video>
     <div id="overlay">not connected</div>
     <script type="module" src="/src/main.ts"></script>

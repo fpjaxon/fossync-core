@@ -12,6 +12,7 @@ const video = $("video") as HTMLVideoElement;
 const overlay = $("overlay") as HTMLDivElement;
 const roomInput = $("room") as HTMLInputElement;
 const nameInput = $("name") as HTMLInputElement;
+const share = $("share") as HTMLAnchorElement;
 
 // Pre-fill room from the query string so a shared link drops you into the same room.
 const qpRoom = new URLSearchParams(location.search).get("room");
@@ -19,8 +20,23 @@ if (qpRoom) roomInput.value = qpRoom;
 
 const WORKER_ORIGIN = "ws://localhost:8787";
 let client: SyncClient | null = null;
+let session: SyncSession | null = null;
+let renderHandle: number | null = null;
+
+function teardown() {
+  session?.stop();
+  session = null;
+  client?.close(); // graceful leave (sends `bye`)
+  client = null;
+  if (renderHandle !== null) {
+    window.clearInterval(renderHandle);
+    renderHandle = null;
+  }
+}
 
 function join() {
+  teardown(); // guard against a double-join spawning dueling clients/loops
+
   const code = roomInput.value.trim().toUpperCase();
   client = new SyncClient({
     url: `${WORKER_ORIGIN}/room/${code}`,
@@ -34,14 +50,20 @@ function join() {
   client.connect();
 
   const adapter = new Html5VideoAdapter(video);
-  const session = new SyncSession({
+  session = new SyncSession({
     client,
     adapter,
     now: () => Date.now(),
     setInterval: (fn, ms) => window.setInterval(fn, ms),
+    clearInterval: (h) => window.clearInterval(h as number),
   });
   session.start();
-  window.setInterval(render, 250);
+  renderHandle = window.setInterval(render, 250);
+
+  // Surface a shareable link (spec §11): /?room=CODE
+  const shareUrl = `${location.origin}${location.pathname}?room=${code}`;
+  share.href = shareUrl;
+  share.textContent = shareUrl;
 }
 
 function render() {
@@ -74,3 +96,6 @@ $("modeToggle").addEventListener("click", () => {
   const next: ControlMode = client.getControlMode() === "host" ? "everyone" : "host";
   client.setMode(next);
 });
+
+// Leave the room cleanly when the tab goes away (also exercises the `bye` path).
+window.addEventListener("pagehide", teardown);

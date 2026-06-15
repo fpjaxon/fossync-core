@@ -91,4 +91,24 @@ describe("SyncSession.tick", () => {
     session.stop();
     expect(cleared).toEqual([42]);
   });
+
+  it("suppresses reconciliation briefly after the user issues intent (no fighting the echo)", () => {
+    let now = 1000;
+    const seek = vi.fn();
+    const { adapter, fireIntent } = fakeAdapter({ getCurrentTime: () => 9, seek });
+    const session = new SyncSession({
+      client: fakeClient(playing, 0),
+      adapter,
+      now: () => now,
+      setInterval: () => 0,
+      intentGraceMs: 500,
+    });
+    fireIntent({ kind: "seek", mediaTime: 9 }); // user just acted at now=1000
+    now = 1200; // within the 500ms grace window
+    session.tick();
+    expect(seek).not.toHaveBeenCalled(); // reconcile is suppressed — doesn't revert the user
+    now = 1600; // past the grace window
+    session.tick();
+    expect(seek).toHaveBeenCalled(); // reconcile resumes normally
+  });
 });
