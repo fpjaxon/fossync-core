@@ -13,8 +13,13 @@ describe("isSupportedContentUrl", () => {
     expect(isSupportedContentUrl("https://www.youtube.com/watch?v=abc123")).toBe(true);
   });
 
+  it("accepts a Crunchyroll watch URL", () => {
+    expect(isSupportedContentUrl("https://www.crunchyroll.com/watch/GPWUK9DJW/like-a-lone-sword")).toBe(true);
+  });
+
   it("rejects non-watch YouTube pages and other hosts", () => {
     expect(isSupportedContentUrl("https://www.youtube.com/")).toBe(false);
+    expect(isSupportedContentUrl("https://www.crunchyroll.com/")).toBe(false);
     expect(isSupportedContentUrl("https://example.com/")).toBe(false);
   });
 

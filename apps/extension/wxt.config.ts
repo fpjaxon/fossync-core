@@ -12,6 +12,7 @@ export default defineConfig({
       "https://harness.fossync.cloud/*",
       "http://localhost:5173/*",
       "*://www.youtube.com/*",
+      "*://www.crunchyroll.com/*",
     ],
     browser_specific_settings: {
       // `data_collection_permissions` postdates wxt 0.19's manifest types.
