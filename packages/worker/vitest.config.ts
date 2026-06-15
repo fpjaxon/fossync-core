@@ -9,6 +9,12 @@ export default defineWorkersConfig({
         // WAL auxiliary files (.sqlite-shm/.sqlite-wal). These tests carry
         // no shared DO state so isolation is not needed.
         isolatedStorage: false,
+        // singleWorker: true prevents workerd from registering the
+        // RoomDurableObject migration twice (once per test file) in the same
+        // workerd process, which triggers a fatal kj/table.c++:49 assert.
+        // All test files share one runtime; unique room codes keep tests
+        // from interfering with each other.
+        singleWorker: true,
       },
     },
   },
