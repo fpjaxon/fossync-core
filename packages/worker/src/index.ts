@@ -1,9 +1,14 @@
 import { RoomDurableObject } from "./room-do";
+import { RoomRegistry } from "./registry-do";
 
-export { RoomDurableObject };
+export { RoomDurableObject, RoomRegistry };
+
+/** Global cap on concurrent active rooms; beyond this, /new returns 503. */
+export const MAX_ROOMS = 20;
 
 export interface Env {
   ROOM: DurableObjectNamespace;
+  REGISTRY: DurableObjectNamespace;
 }
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
@@ -24,11 +29,20 @@ function genCode(): string {
   return out.join("");
 }
 
+function registry(env: Env): DurableObjectStub {
+  return env.REGISTRY.get(env.REGISTRY.idFromName("global"));
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname === "/new") {
+      const res = await registry(env).fetch("https://registry/count");
+      const { count } = (await res.json()) as { count: number };
+      if (count >= MAX_ROOMS) {
+        return Response.json({ error: "at_capacity" }, { status: 503 });
+      }
       return Response.json({ code: genCode() });
     }
 

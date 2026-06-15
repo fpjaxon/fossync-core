@@ -21,6 +21,10 @@ interface PersistedRoom {
   hostId: string | null;
 }
 
+interface RoomEnv {
+  REGISTRY: DurableObjectNamespace;
+}
+
 const MAX_NAME_LEN = 64;
 const CONTROL_ACTIONS = new Set(["play", "pause", "seek"]);
 
@@ -28,8 +32,9 @@ export class RoomDurableObject {
   private playback: Playback;
   private controlMode: ControlMode = "everyone";
   private hostId: string | null = null;
+  private code: string | null = null; // room code, captured from the request path
 
-  constructor(private readonly ctx: DurableObjectState, private readonly env: unknown) {
+  constructor(private readonly ctx: DurableObjectState, private readonly env: RoomEnv) {
     this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<PersistedRoom>("room");
@@ -50,7 +55,24 @@ export class RoomDurableObject {
     await this.ctx.storage.put("room", room);
   }
 
+  // Tell the singleton registry this room is active / gone. Best-effort: the
+  // session cap must never block or break an actual room.
+  private async touch(action: "acquire" | "release"): Promise<void> {
+    if (!this.code) return;
+    try {
+      const reg = this.env.REGISTRY.get(this.env.REGISTRY.idFromName("global"));
+      await reg.fetch(`https://registry/${action}`, {
+        method: "POST",
+        body: JSON.stringify({ room: this.code }),
+      });
+    } catch {
+      /* ignore registry failures */
+    }
+  }
+
   async fetch(req: Request): Promise<Response> {
+    const m = new URL(req.url).pathname.match(/\/room\/([A-Za-z0-9]+)/);
+    if (m) this.code = m[1]!.toUpperCase();
     if ((req.headers.get("Upgrade") ?? "").toLowerCase() !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
@@ -136,6 +158,7 @@ export class RoomDurableObject {
         ws.serializeAttachment(att);
         this.send(ws, { type: "welcome", youId: att.id, snapshot: this.snapshot() });
         this.broadcast({ type: "presence", participants: this.participants() });
+        await this.touch("acquire");
         break;
       }
       case "ping": {
@@ -224,6 +247,7 @@ export class RoomDurableObject {
       this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
       this.controlMode = "everyone";
       this.hostId = null;
+      await this.touch("release");
     }
   }
 }
