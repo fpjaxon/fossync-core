@@ -213,5 +213,15 @@ export class RoomDurableObject {
     }
 
     this.broadcast({ type: "presence", participants: this.participants(ws) }, ws);
+
+    // Once the last connection is gone the room no longer exists. Keep nothing:
+    // fossync Cloud stores no room data beyond an active session, so wipe the
+    // persisted record (and reset in-memory state in case this instance is reused).
+    if (this.ctx.getWebSockets().filter((s) => s !== ws).length === 0) {
+      await this.ctx.storage.deleteAll();
+      this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
+      this.controlMode = "everyone";
+      this.hostId = null;
+    }
   }
 }

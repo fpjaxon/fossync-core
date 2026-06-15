@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { SELF } from "cloudflare:test";
+import { describe, it, expect, vi } from "vitest";
+import { SELF, env, runInDurableObject } from "cloudflare:test";
 import type { ServerMessage, ClientMessage } from "@fossync/sync-core";
 
 async function connect(code: string): Promise<WebSocket> {
@@ -204,5 +204,36 @@ describe("RoomDurableObject input validation", () => {
     const first = await nextMessage(a, () => true); // the gated ping must not have produced a pong first
     expect(first.type).toBe("welcome");
     a.close();
+  });
+});
+
+describe("RoomDurableObject ephemerality", () => {
+  it("discards the persisted room record once the last participant leaves", async () => {
+    const ROOM = (env as unknown as { ROOM: DurableObjectNamespace }).ROOM;
+    const stub = ROOM.get(ROOM.idFromName("EPHEM01"));
+
+    const a = await connect("EPHEM01");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+
+    // Drive the room into a clearly non-default, persisted state.
+    send(a, { type: "control", action: "play", mediaTime: 42 });
+    send(a, { type: "setMode", mode: "host" });
+    await nextMessage(a, (m) => m.type === "state" && m.controlMode === "host");
+
+    // While the room is live, its state is persisted.
+    await runInDurableObject(stub, async (_instance, state) => {
+      expect(await state.storage.get("room")).toBeTruthy();
+    });
+
+    a.close(); // last participant leaves -> the room no longer exists
+
+    // Cleanup runs asynchronously; the persisted record must be wiped so nothing
+    // about the room survives the session.
+    await vi.waitFor(async () => {
+      await runInDurableObject(stub, async (_instance, state) => {
+        expect(await state.storage.get("room")).toBeUndefined();
+      });
+    });
   });
 });
