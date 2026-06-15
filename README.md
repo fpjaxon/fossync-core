@@ -1,46 +1,98 @@
 # fossync
 
-A Teleparty-style watch-party **sync engine**. It synchronizes playback *control
-signals* (play / pause / seek) across viewers — it does **not** stream, store, or
-proxy video. Everyone streams from the original site; fossync just keeps the
-timeline aligned.
+fossync is a watch-party synchronization engine in the style of Teleparty. It keeps
+video playback aligned across viewers by synchronizing control signals (play, pause,
+and seek). It **does not stream, store, or proxy video**: everyone streams from the
+original site, and fossync only keeps the timeline aligned.
 
-The sync core is service-agnostic: it drives any HTML5 `<video>` behind a small
-adapter, so each site (the bundled test harness, YouTube, and more later) is just
-another adapter.
+The sync core is service-agnostic. It drives any HTML5 `<video>` element through a
+small adapter, so each supported site is simply another adapter.
+
+fossync Cloud is live at [fossync.cloud](https://fossync.cloud), and the project
+website is at [fossync.com](https://fossync.com).
 
 ## How it works
 
-One **Cloudflare Durable Object per room** holds the authoritative playback state
-as a *timeline anchor* (`at server-time T, media position was P, advancing at rate
-R`) and acts as the shared reference clock + WebSocket fan-out. Each client
-estimates its offset to that clock (Cristian's algorithm) and runs a ~250 ms
-reconciliation loop that nudges `playbackRate` for small drift or hard-seeks for
-large drift — targeting <250 ms steady-state alignment.
+A single Cloudflare Durable Object per room holds the authoritative playback state as
+a timeline anchor: at server time T, the media position was P, advancing at rate R.
+The Durable Object also serves as the shared reference clock and the WebSocket fan-out
+point. Each client estimates its offset to that clock using Cristian's algorithm and
+runs a reconciliation loop (roughly every 250 ms) that nudges `playbackRate` to
+correct small drift and performs a hard seek to correct large drift, targeting
+steady-state alignment under 250 ms.
 
-The **browser extension is the only control surface** — the web page stays pure
-content. You start or join a room from the extension; a content script injects into
-the page, syncs its `<video>`, and shows a small presence badge.
+The browser extension is the only control surface; the web page itself stays pure
+content. A viewer starts or joins a room from the extension. A content script then
+injects into the page, synchronizes its `<video>` element, and renders an in-page
+sidebar for presence, activity, and chat.
 
-## Packages
+## Architecture
 
-- `packages/sync-core` — framework-agnostic, DOM-free sync logic: clock-offset
-  math, reconciler, `SyncClient`, `SyncSession`, `Html5VideoAdapter`. Unit-tested
-  with vitest.
-- `packages/worker` — Cloudflare Worker + `RoomDurableObject` (authoritative
-  timeline anchor, reference clock, WebSocket fan-out; SQLite-backed Durable
-  Object). Room state is ephemeral — it is discarded once the last participant
-  leaves. Tested with `@cloudflare/vitest-pool-workers`.
-- `apps/extension` — WXT-based Firefox (MV2) extension: the popup ("Start Sync" →
-  shareable invite link) plus per-site content scripts. Built on a reusable
-  page-sync controller with one adapter per site (currently the test harness and
-  YouTube).
-- `apps/harness` — a minimal static page with a single `<video>`, used as a neutral
-  site for testing sync.
+fossync is a pnpm workspace (a monorepo) with the following packages:
 
-## Develop
+- `packages/sync-core`: framework-agnostic, DOM-free sync logic, including the
+  clock-offset math, the reconciler, `SyncClient`, `SyncSession`, and
+  `Html5VideoAdapter`. Unit-tested with Vitest.
+- `packages/worker`: the Cloudflare Worker and its Durable Objects.
+  `RoomDurableObject` is the authoritative timeline anchor, reference clock, and
+  WebSocket fan-out (SQLite-backed). `RoomRegistry` enforces a global cap on
+  concurrent active rooms. Tested with `@cloudflare/vitest-pool-workers`.
+- `apps/extension`: the WXT-based Firefox (MV2) extension. It contains the popup, a
+  reusable page-sync controller, the in-page sidebar, and one adapter per supported
+  site.
+- `apps/harness`: a minimal static page with a single `<video>` element, used as a
+  neutral site for testing sync.
 
-This is a pnpm workspace (pnpm 9). If you don't have pnpm: `npm i -g pnpm@9.7.0`.
+## Supported sites
+
+- The bundled test harness.
+- YouTube watch pages (`youtube.com/watch`), with syncing paused during ads and
+  resumed afterward.
+- Crunchyroll episodes (`crunchyroll.com/watch/...`), including following the host
+  across episode changes.
+
+Room state is ephemeral by design. `RoomDurableObject` discards its persisted record
+once the last participant leaves, so fossync Cloud retains no room data beyond an
+active session.
+
+## The extension
+
+The extension is the control surface for a watch party:
+
+- The popup starts a room and rewrites the current tab's URL to a shareable invite
+  link (`…#vsync=CODE`).
+- A content script injects on supported pages, synchronizes the page's `<video>` over
+  the relay, and renders a collapsible in-page sidebar.
+- The sidebar shows the participant list, a live activity feed (joins, leaves, and
+  play/pause/seek events with timecodes), live chat, and emoji reactions. Chat and
+  reactions are relayed in real time and are never stored.
+- When a viewer joins, browser autoplay policies can block programmatic playback. The
+  extension shows a one-click "Click to watch in sync" gate over the video so the
+  joiner starts playing in sync.
+- The engine supports two control modes, anyone-can-control and host-only, and
+  transfers host status automatically when the host leaves.
+
+## Self-hosting and custom relays
+
+fossync Cloud (`fossync.cloud`) is the default relay, but the relay is just the worker
+in `packages/worker` and can be self-hosted on any Cloudflare account. The worker
+exposes two routes:
+
+- `GET /new` allocates a room code, and returns `503 {"error":"at_capacity"}` once the
+  global cap of 20 concurrent active rooms is reached. CORS is open so any relay's
+  `/new` is reachable from the extension popup.
+- `GET /room/:code` is the WebSocket endpoint that a room's clients connect to.
+
+To point the extension at a different relay, open the extension settings (the gear
+icon) and enter the relay URL. When the configured relay is not the official one, the
+sidebar shows a persistent warning: a relay operator can see the room and your IP
+address and can control playback. A relay never receives credentials, and it cannot
+redirect viewers off-site or execute code in the page.
+
+## Development
+
+This is a pnpm workspace (pnpm 9). If you do not have pnpm installed, run
+`npm i -g pnpm@9.7.0`.
 
 ```bash
 pnpm install
@@ -51,52 +103,56 @@ pnpm -F @fossync/extension dev   # launch Firefox with the extension (HMR)
 pnpm -F @fossync/extension zip   # build the installable .zip
 ```
 
-## Browser extension
+### Loading the extension
 
-The popup creates or reflects a room and produces a shareable invite link
-(`…#vsync=CODE`); a content script injects on supported pages, syncs the page's
-`<video>` over the worker, and shows a presence badge. On YouTube it pauses syncing
-during ads and resumes afterward. By default the extension connects to the deployed
-backend at `wss://fossync.cloud`.
+To load the extension unsigned for testing, build it with
+`pnpm -F @fossync/extension zip`. Then, in Firefox, open `about:debugging`, choose
+**This Firefox**, choose **Load Temporary Add-on**, and select the built `.zip` under
+`apps/extension/.output/`.
 
-Supported pages today: the test harness and `youtube.com/watch`.
+Note that other watch-party extensions (such as Teleparty) hook the same `<video>`
+element and will conflict with fossync. Disable them while testing.
 
-To load it unsigned for testing: build with `pnpm -F @fossync/extension zip`, then
-in Firefox open `about:debugging` → **This Firefox** → **Load Temporary Add-on** and
-select the built `.zip` under `apps/extension/.output/`.
+### Verifying sync end-to-end
 
-## Try it (end-to-end)
+Unit tests cover the sync math. The visual check that two tabs stay locked together is:
 
-Unit tests cover the sync math; the "do two tabs actually stay locked" check is
-visual:
-
-1. Load the extension (above).
-2. Open the harness (`https://harness.fossync.cloud`, or your local `:5173`) or a
-   `youtube.com/watch` video.
-3. Open the fossync popup → **Start Sync** → copy the invite link.
-4. Open that link in a second tab (or send it to someone else). Both tabs join the
+1. Load the extension as described above.
+2. Open the harness (`https://harness.fossync.cloud`, or your local
+   `http://localhost:5173`), a YouTube watch page, or a Crunchyroll episode.
+3. Open the fossync popup, choose **Start Sync**, and copy the invite link.
+4. Open that link in a second tab, or send it to another viewer. Both tabs join the
    same room.
-5. Play, pause, and seek in one tab. **Expected:** the other follows within a tick;
-   steady-state drift settles under ~250 ms (small corrections are invisible rate
-   nudges, large jumps are seeks).
-
-The engine supports two control modes — anyone-can-control or host-only — and
-transfers host status automatically when the host leaves.
+5. Play, pause, and seek in one tab. The other tab should follow within a tick, and
+   steady-state drift should settle under roughly 250 ms. Small corrections are
+   invisible rate nudges; large jumps are seeks.
 
 ## Deployment
 
-- Worker: **https://fossync.cloud** (Cloudflare Workers + Durable Objects)
-- Harness: **https://harness.fossync.cloud**
+- Relay (worker): [fossync.cloud](https://fossync.cloud), on Cloudflare Workers and
+  Durable Objects.
+- Harness: [harness.fossync.cloud](https://harness.fossync.cloud).
+- Project website: [fossync.com](https://fossync.com).
 
-## Deferred
+## Privacy
 
-Chat; more streaming-service adapters (Netflix / Disney+ / Max — DRM makes these
-harder); optional anonymous accounts; "wait-for-slowest" buffering; following the
-host to a different video.
+fossync synchronizes control signals only and does not stream or store video. Room
+state is ephemeral, chat and reactions are relayed without being stored, and display
+names are stored locally and are never persisted on the server. See
+[PRIVACY.md](./PRIVACY.md) for the full policy.
+
+## Roadmap
+
+- Additional streaming-service adapters (Netflix, Disney+, Max), where DRM makes
+  integration harder.
+- Generalizing content and episode sync beyond Crunchyroll, such as following the host
+  to the next YouTube video.
+- A `fossync.cloud/join/CODE` share-link model.
+- Optional anonymous accounts and wait-for-slowest buffering.
 
 ## License
 
-fossync is available to the public under the [PolyForm Noncommercial License
-1.0.0](./LICENSE): any noncommercial purpose is permitted. Commercial use rights
-are reserved exclusively by Floatpoint, LLC — for commercial licensing, contact
-jaxon@floatpoint.net.
+fossync is available to the public under the
+[PolyForm Noncommercial License 1.0.0](./LICENSE): any noncommercial purpose is
+permitted. Commercial use rights are reserved exclusively by Floatpoint, LLC. For
+commercial licensing, contact jaxon@floatpoint.net.
