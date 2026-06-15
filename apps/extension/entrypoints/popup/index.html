@@ -10,22 +10,23 @@
       label { font-size: 12px; flex: 1; display: flex; gap: 6px; align-items: center; }
       input { flex: 1; min-width: 0; }
       button { cursor: pointer; }
-      #stats { font-family: ui-monospace, monospace; white-space: pre; font-size: 12px; background: #111; color: #0f0; padding: 8px; border-radius: 4px; margin-top: 8px; min-height: 8em; }
+      #invite { font: 11px ui-monospace, monospace; }
+      #status { font: 12px ui-monospace, monospace; color: #444; margin-top: 6px; min-height: 1.2em; }
     </style>
   </head>
   <body>
     <div class="row">
-      <label>Room <input id="room" value="TEST01" /></label>
-      <button id="newRoom">New</button>
-    </div>
-    <div class="row">
       <label>Name <input id="name" placeholder="display name" /></label>
     </div>
     <div class="row">
-      <button id="connect">Connect</button>
+      <button id="startRoom">Start a room</button>
       <button id="openHarness">Open harness</button>
     </div>
-    <div id="stats">idle</div>
+    <div class="row">
+      <input id="invite" readonly placeholder="invite link appears here" />
+      <button id="copy">Copy</button>
+    </div>
+    <div id="status"></div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
