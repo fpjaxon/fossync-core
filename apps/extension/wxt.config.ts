@@ -7,6 +7,6 @@ export default defineConfig({
     // storage: display name. activeTab: read/redirect the active tab on Start Sync.
     // hosts: the deployed worker (fossync.cloud) + the harness page (injection).
     permissions: ["storage", "activeTab"],
-    host_permissions: ["https://fossync.cloud/*", "http://localhost:5173/*"],
+    host_permissions: ["https://fossync.cloud/*", "http://localhost:5173/*", "*://www.youtube.com/*"],
   },
 });

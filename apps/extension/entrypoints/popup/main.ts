@@ -5,6 +5,7 @@ import { buildInviteUrl, parseRoomCode, removeInvite } from "../../src/invite";
 import { randomName } from "../../src/name-gen";
 import { getOrCreateName, setName } from "../../src/name-store";
 import { localNameStorage } from "../../src/storage";
+import { isSupportedContentUrl } from "../../src/supported";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const nameInput = $("name") as HTMLInputElement;
@@ -23,14 +24,6 @@ function setStatus(text: string): void {
 async function activeTab() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab;
-}
-
-function isHarness(url: string): boolean {
-  try {
-    return new URL(url).origin === HARNESS_ORIGIN;
-  } catch {
-    return false;
-  }
 }
 
 function showSynced(code: string, inviteUrl: string): void {
@@ -80,8 +73,8 @@ $("startSync").addEventListener("click", async () => {
   setStatus("starting…");
   try {
     const tab = await activeTab();
-    if (!tab?.id || !tab.url || !isHarness(tab.url)) {
-      setStatus("open the harness first, then Start Sync");
+    if (!tab?.id || !tab.url || !isSupportedContentUrl(tab.url)) {
+      setStatus("open the harness or a YouTube video, then Start Sync");
       return;
     }
     const res = await fetch(newRoomUrl());
