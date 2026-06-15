@@ -25,6 +25,7 @@ export interface RoomSnapshot {
   hostId: string;
   playback: Playback;
   participants: Participant[];
+  content: string; // current media URL the room is watching ("" if unset)
 }
 
 // ---- Wire protocol ----
@@ -35,6 +36,7 @@ export type ClientMessage =
   | { type: "ping"; t0: number }
   | { type: "control"; action: ControlAction; mediaTime: number }
   | { type: "setMode"; mode: ControlMode }
+  | { type: "setContent"; url: string }
   | { type: "chat"; text: string }
   | { type: "reaction"; emoji: string }
   | { type: "bye" };
@@ -44,6 +46,7 @@ export type ServerMessage =
   | { type: "pong"; t0: number; t1: number }
   | { type: "state"; playback: Playback; controlMode: ControlMode; hostId: string; actor?: Actor }
   | { type: "presence"; participants: Participant[] }
+  | { type: "content"; url: string; from: Actor }
   | { type: "chat"; from: Actor; text: string }
   | { type: "reaction"; from: Actor; emoji: string }
   | { type: "error"; reason: string };

@@ -304,3 +304,45 @@ describe("RoomDurableObject seeding + chat + reactions", () => {
     b.close();
   });
 });
+
+describe("RoomDurableObject content sync", () => {
+  it("relays a content change with attribution, then rejects it from a non-host in host mode", async () => {
+    const a = await connect("EP01"); // host
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+    const b = await connect("EP01"); // guest
+    send(b, { type: "hello", name: "Bob" });
+    await nextMessage(b, (m) => m.type === "welcome");
+
+    const contentP = nextMessage(b, (m) => m.type === "content");
+    send(a, { type: "setContent", url: "https://www.crunchyroll.com/watch/EP2/two" });
+    const content = await contentP;
+    if (content.type !== "content") throw new Error("bad");
+    expect(content.url).toBe("https://www.crunchyroll.com/watch/EP2/two");
+    expect(content.from.name).toBe("Alice");
+
+    send(a, { type: "setMode", mode: "host" });
+    await nextMessage(b, (m) => m.type === "state" && m.controlMode === "host");
+    const errP = nextMessage(b, (m) => m.type === "error");
+    send(b, { type: "setContent", url: "https://www.crunchyroll.com/watch/EP3/three" });
+    expect((await errP).type).toBe("error");
+    a.close();
+    b.close();
+  });
+
+  it("carries the current content in the welcome snapshot for late joiners", async () => {
+    const a = await connect("EP02");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+    send(a, { type: "setContent", url: "https://www.crunchyroll.com/watch/LATE/x" });
+    await nextMessage(a, (m) => m.type === "content");
+
+    const b = await connect("EP02"); // late joiner
+    send(b, { type: "hello", name: "Bob" });
+    const welcome = await nextMessage(b, (m) => m.type === "welcome");
+    if (welcome.type !== "welcome") throw new Error("bad");
+    expect(welcome.snapshot.content).toBe("https://www.crunchyroll.com/watch/LATE/x");
+    a.close();
+    b.close();
+  });
+});

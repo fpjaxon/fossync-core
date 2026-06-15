@@ -72,6 +72,7 @@ describe("SyncClient", () => {
         hostId: "me",
         playback: { paused: true, anchorMediaTime: 0, anchorServerTime: 1000, rate: 1 },
         participants: [{ id: "me", role: "host", name: "Tester" }],
+        content: "",
       },
     });
     expect(client.getYouId()).toBe("me");
@@ -195,5 +196,21 @@ describe("SyncClient", () => {
     socket.serverSend({ type: "reaction", from: { id: "u2", name: "Bob" }, emoji: "🔥" });
     expect(chat).toEqual({ from: { id: "u2", name: "Bob" }, text: "hi" });
     expect(reaction).toEqual({ from: { id: "u2", name: "Bob" }, emoji: "🔥" });
+  });
+
+  it("sends content changes and surfaces incoming ones via onContent", () => {
+    const { latest, client } = setup();
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    socket.sent.length = 0;
+    client.setContent("https://www.crunchyroll.com/watch/EP2/x");
+    expect(socket.sentMessages()).toEqual([{ type: "setContent", url: "https://www.crunchyroll.com/watch/EP2/x" }]);
+
+    let got: string | null = null;
+    client.onContent((u) => (got = u));
+    socket.serverSend({ type: "content", url: "https://www.crunchyroll.com/watch/EP3/y", from: { id: "u2", name: "Bob" } });
+    expect(got).toBe("https://www.crunchyroll.com/watch/EP3/y");
+    expect(client.getContent()).toBe("https://www.crunchyroll.com/watch/EP3/y");
   });
 });

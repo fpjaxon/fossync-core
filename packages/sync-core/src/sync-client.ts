@@ -45,6 +45,8 @@ export class SyncClient {
   private errorCb: ((reason: string) => void) | null = null;
   private chatCb: ((msg: { from: Actor; text: string }) => void) | null = null;
   private reactionCb: ((msg: { from: Actor; emoji: string }) => void) | null = null;
+  private content = "";
+  private contentCb: ((url: string) => void) | null = null;
   private intentionalClose = false;
   private epoch = 0; // bumped each connect; stale resync callbacks no-op
 
@@ -92,6 +94,8 @@ export class SyncClient {
         this.youId = msg.youId;
         this.applySnapshot(msg.snapshot.controlMode, msg.snapshot.hostId, msg.snapshot.playback);
         this.participants = msg.snapshot.participants;
+        this.content = msg.snapshot.content ?? "";
+        if (this.content) this.contentCb?.(this.content);
         break;
       case "pong":
         this.samples.push(computeSample(msg.t0, msg.t1, this.opts.now()));
@@ -103,6 +107,10 @@ export class SyncClient {
         break;
       case "presence":
         this.participants = msg.participants;
+        break;
+      case "content":
+        this.content = msg.url;
+        this.contentCb?.(msg.url);
         break;
       case "chat":
         this.chatCb?.({ from: msg.from, text: msg.text });
@@ -150,11 +158,14 @@ export class SyncClient {
     this.send({ type: "control", action, mediaTime });
   }
   setMode(mode: ControlMode): void { this.send({ type: "setMode", mode }); }
+  setContent(url: string): void { this.send({ type: "setContent", url }); }
+  getContent(): string { return this.content; }
   sendChat(text: string): void { this.send({ type: "chat", text }); }
   sendReaction(emoji: string): void { this.send({ type: "reaction", emoji }); }
   onError(cb: (reason: string) => void): void { this.errorCb = cb; }
   onChat(cb: (msg: { from: Actor; text: string }) => void): void { this.chatCb = cb; }
   onReaction(cb: (msg: { from: Actor; emoji: string }) => void): void { this.reactionCb = cb; }
+  onContent(cb: (url: string) => void): void { this.contentCb = cb; }
 
   close(): void {
     // #2 + #6: intentional leave — announce, then close without auto-reconnect.

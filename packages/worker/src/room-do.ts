@@ -19,6 +19,7 @@ interface PersistedRoom {
   playback: Playback;
   controlMode: ControlMode;
   hostId: string | null;
+  content: string;
 }
 
 interface RoomEnv {
@@ -34,6 +35,7 @@ export class RoomDurableObject {
   private playback: Playback;
   private controlMode: ControlMode = "everyone";
   private hostId: string | null = null;
+  private content = ""; // current media URL the room is watching ("" if unset)
   private code: string | null = null; // room code, captured from the request path
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: RoomEnv) {
@@ -44,6 +46,7 @@ export class RoomDurableObject {
         this.playback = saved.playback;
         this.controlMode = saved.controlMode;
         this.hostId = saved.hostId;
+        this.content = saved.content ?? "";
       }
     });
   }
@@ -53,6 +56,7 @@ export class RoomDurableObject {
       playback: this.playback,
       controlMode: this.controlMode,
       hostId: this.hostId,
+      content: this.content,
     };
     await this.ctx.storage.put("room", room);
   }
@@ -107,6 +111,7 @@ export class RoomDurableObject {
       hostId: this.hostId ?? "",
       playback: this.playback,
       participants: this.participants(),
+      content: this.content,
     };
   }
 
@@ -208,6 +213,28 @@ export class RoomDurableObject {
         this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
         break;
       }
+      case "setContent": {
+        if (this.controlMode === "host" && att.id !== this.hostId) {
+          this.send(ws, { type: "error", reason: "not authorized to control" });
+          return;
+        }
+        let url: string;
+        try {
+          const u = new URL(typeof msg.url === "string" ? msg.url : "");
+          if (u.protocol !== "https:") return; // only https media pages
+          url = u.toString().slice(0, 2048);
+        } catch {
+          return;
+        }
+        if (url === this.content) return;
+        this.content = url;
+        // Switching episodes resets the timeline to the start (paused).
+        this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
+        await this.persist();
+        this.broadcast({ type: "content", url, from: { id: att.id, name: att.name } });
+        this.broadcast(this.stateMessage());
+        break;
+      }
       case "chat": {
         // Relayed in real time to everyone (incl. sender); never stored.
         const text = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_CHAT_LEN) : "";
@@ -267,6 +294,7 @@ export class RoomDurableObject {
       this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
       this.controlMode = "everyone";
       this.hostId = null;
+      this.content = "";
       await this.touch("release");
     }
   }
