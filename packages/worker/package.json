@@ -1,5 +1,5 @@
 {
-  "name": "@video-sync/worker",
+  "name": "@fossync/worker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@video-sync/sync-core": "workspace:*"
+    "@fossync/sync-core": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.5.2",

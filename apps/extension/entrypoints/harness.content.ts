@@ -1,5 +1,5 @@
 import { defineContentScript } from "wxt/sandbox";
-import { SyncClient, SyncSession, Html5VideoAdapter } from "@video-sync/sync-core";
+import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
 import { roomSocketUrl } from "../src/urls";
 import { HARNESS_ORIGIN } from "../src/config";
 import { parseRoomCode } from "../src/invite";
@@ -69,7 +69,7 @@ export default defineContentScript({
         now: () => Date.now(),
         schedule: (fn, ms) => window.setTimeout(fn, ms),
       });
-      client.onError((reason) => console.warn("[video-sync] server error:", reason));
+      client.onError((reason) => console.warn("[fossync] server error:", reason));
       client.connect();
       session = new SyncSession({
         client,

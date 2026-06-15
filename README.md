@@ -1,4 +1,4 @@
-# video-sync
+# fossync
 
 A Teleparty-style watch-party **sync engine**. It synchronizes playback *control
 signals* (play / pause / seek) across viewers — it does **not** stream video. v1
@@ -34,8 +34,8 @@ large drift — targeting <250 ms steady-state alignment.
 ```bash
 pnpm install
 pnpm -r test                       # all unit tests (sync-core + worker)
-pnpm -F @video-sync/worker dev     # backend on http://localhost:8787
-pnpm -F @video-sync/harness dev    # harness on http://localhost:5173
+pnpm -F @fossync/worker dev     # backend on http://localhost:8787
+pnpm -F @fossync/harness dev    # harness on http://localhost:5173
 ```
 
 ## Firefox extension (staging)
@@ -45,8 +45,8 @@ A WXT-based Firefox extension whose popup runs a live `SyncClient` (proving
 room. It does **not** yet inject into streaming sites — that's the next phase.
 
 ```bash
-pnpm -F @video-sync/extension dev     # launches Firefox with the extension (HMR)
-pnpm -F @video-sync/extension build   # bundles to apps/extension/.output/firefox-mv2/
+pnpm -F @fossync/extension dev     # launches Firefox with the extension (HMR)
+pnpm -F @fossync/extension build   # bundles to apps/extension/.output/firefox-mv2/
 ```
 
 Manual check (with the worker on :8787 and harness on :5173 running): open the
@@ -74,8 +74,8 @@ actually stay locked on a real video" check is inherently visual:
 
 ## Design & plan
 
-- Spec: `docs/superpowers/specs/2026-06-14-video-sync-engine-design.md`
-- Implementation plan: `docs/superpowers/plans/2026-06-14-video-sync-engine.md`
+- Spec: `docs/superpowers/specs/2026-06-14-fossync-engine-design.md`
+- Implementation plan: `docs/superpowers/plans/2026-06-14-fossync-engine.md`
 
 ## Deferred (not in v1)
 

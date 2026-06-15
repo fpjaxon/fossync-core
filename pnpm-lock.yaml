@@ -14,7 +14,7 @@ importers:
 
   apps/extension:
     dependencies:
-      '@video-sync/sync-core':
+      '@fossync/sync-core':
         specifier: workspace:*
         version: link:../../packages/sync-core
     devDependencies:
@@ -30,7 +30,7 @@ importers:
 
   apps/harness:
     dependencies:
-      '@video-sync/sync-core':
+      '@fossync/sync-core':
         specifier: workspace:*
         version: link:../../packages/sync-core
     devDependencies:
@@ -52,7 +52,7 @@ importers:
 
   packages/worker:
     dependencies:
-      '@video-sync/sync-core':
+      '@fossync/sync-core':
         specifier: workspace:*
         version: link:../sync-core
     devDependencies:

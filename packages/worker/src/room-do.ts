@@ -5,7 +5,7 @@ import type {
   Playback,
   RoomSnapshot,
   ServerMessage,
-} from "@video-sync/sync-core";
+} from "@fossync/sync-core";
 
 interface Attachment {
   id: string;

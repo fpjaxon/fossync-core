@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { SELF } from "cloudflare:test";
-import type { ServerMessage, ClientMessage } from "@video-sync/sync-core";
+import type { ServerMessage, ClientMessage } from "@fossync/sync-core";
 
 async function connect(code: string): Promise<WebSocket> {
   const res = await SELF.fetch(`https://example.com/room/${code}`, {

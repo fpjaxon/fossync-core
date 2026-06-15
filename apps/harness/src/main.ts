@@ -4,7 +4,7 @@ import {
   Html5VideoAdapter,
   expectedPosition,
   type ControlMode,
-} from "@video-sync/sync-core";
+} from "@fossync/sync-core";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 

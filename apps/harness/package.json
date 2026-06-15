@@ -1,5 +1,5 @@
 {
-  "name": "@video-sync/harness",
+  "name": "@fossync/harness",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
     "test": "echo \"no unit tests (manual harness)\" && exit 0"
   },
   "dependencies": {
-    "@video-sync/sync-core": "workspace:*"
+    "@fossync/sync-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.5.4",

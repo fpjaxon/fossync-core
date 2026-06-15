@@ -1,5 +1,5 @@
 {
-  "name": "@video-sync/extension",
+  "name": "@fossync/extension",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@video-sync/sync-core": "workspace:*"
+    "@fossync/sync-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.5.4",
