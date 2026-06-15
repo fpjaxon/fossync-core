@@ -9,9 +9,19 @@ export interface Env {
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
 
 function genCode(): string {
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join("");
+  // Rejection-sample to avoid modulo bias (256 is not a multiple of 31).
+  const limit = Math.floor(256 / ALPHABET.length) * ALPHABET.length;
+  const out: string[] = [];
+  while (out.length < 6) {
+    const buf = new Uint8Array(6);
+    crypto.getRandomValues(buf);
+    for (const b of buf) {
+      if (b >= limit) continue;
+      out.push(ALPHABET[b % ALPHABET.length]!);
+      if (out.length === 6) break;
+    }
+  }
+  return out.join("");
 }
 
 export default {

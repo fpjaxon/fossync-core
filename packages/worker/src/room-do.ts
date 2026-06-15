@@ -11,6 +11,7 @@ interface Attachment {
   id: string;
   name: string;
   role: "host" | "guest";
+  helloed: boolean; // true once the socket has identified itself via `hello`
 }
 
 interface PersistedRoom {
@@ -18,6 +19,9 @@ interface PersistedRoom {
   controlMode: ControlMode;
   hostId: string | null;
 }
+
+const MAX_NAME_LEN = 64;
+const CONTROL_ACTIONS = new Set(["play", "pause", "seek"]);
 
 export class RoomDurableObject {
   private playback: Playback;
@@ -46,26 +50,30 @@ export class RoomDurableObject {
   }
 
   async fetch(req: Request): Promise<Response> {
-    if (req.headers.get("Upgrade") !== "websocket") {
+    if ((req.headers.get("Upgrade") ?? "").toLowerCase() !== "websocket") {
       return new Response("expected websocket", { status: 426 });
     }
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    const attachment: Attachment = { id: crypto.randomUUID(), name: "", role: "guest" };
+    const attachment: Attachment = { id: crypto.randomUUID(), name: "", role: "guest", helloed: false };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private participants(exclude?: WebSocket): Participant[] {
+  /** Sockets that have completed `hello`, i.e. real participants. */
+  private helloedSockets(exclude?: WebSocket): WebSocket[] {
     return this.ctx
       .getWebSockets()
-      .filter((ws) => ws !== exclude)
-      .map((ws) => {
-        const a = ws.deserializeAttachment() as Attachment;
-        return { id: a.id, role: a.role, name: a.name };
-      });
+      .filter((ws) => ws !== exclude && (ws.deserializeAttachment() as Attachment).helloed);
+  }
+
+  private participants(exclude?: WebSocket): Participant[] {
+    return this.helloedSockets(exclude).map((ws) => {
+      const a = ws.deserializeAttachment() as Attachment;
+      return { id: a.id, role: a.role, name: a.name };
+    });
   }
 
   private snapshot(): RoomSnapshot {
@@ -82,6 +90,10 @@ export class RoomDurableObject {
     for (const ws of this.ctx.getWebSockets()) if (ws !== except) ws.send(s);
   }
 
+  private send(ws: WebSocket, msg: ServerMessage): void {
+    ws.send(JSON.stringify(msg));
+  }
+
   private stateMessage(): ServerMessage {
     return {
       type: "state",
@@ -92,34 +104,50 @@ export class RoomDurableObject {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    let msg: ClientMessage;
+    let parsed: unknown;
     try {
-      msg = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
+      parsed = JSON.parse(typeof raw === "string" ? raw : new TextDecoder().decode(raw));
     } catch {
       return;
     }
+    // The wire protocol is TypeScript-only (erased at runtime), so validate the shape
+    // of every field we trust before acting — a JSON-valid but malformed message must
+    // never poison the shared room state.
+    if (typeof parsed !== "object" || parsed === null || typeof (parsed as { type?: unknown }).type !== "string") {
+      return;
+    }
+    const msg = parsed as ClientMessage;
     const att = ws.deserializeAttachment() as Attachment;
+
+    // Gate every message except `hello` until the socket has identified itself.
+    if (!att.helloed && msg.type !== "hello") return;
 
     switch (msg.type) {
       case "hello": {
-        att.name = msg.name;
+        att.name = typeof msg.name === "string" ? msg.name.slice(0, MAX_NAME_LEN) : "Guest";
+        att.helloed = true;
         if (this.hostId === null) {
           this.hostId = att.id;
           att.role = "host";
           await this.persist();
         }
         ws.serializeAttachment(att);
-        ws.send(JSON.stringify({ type: "welcome", youId: att.id, snapshot: this.snapshot() } satisfies ServerMessage));
+        this.send(ws, { type: "welcome", youId: att.id, snapshot: this.snapshot() });
         this.broadcast({ type: "presence", participants: this.participants() });
         break;
       }
       case "ping": {
-        ws.send(JSON.stringify({ type: "pong", t0: msg.t0, t1: Date.now() } satisfies ServerMessage));
+        if (typeof msg.t0 !== "number") return;
+        this.send(ws, { type: "pong", t0: msg.t0, t1: Date.now() });
         break;
       }
       case "control": {
+        if (!CONTROL_ACTIONS.has(msg.action) || !Number.isFinite(msg.mediaTime)) {
+          this.send(ws, { type: "error", reason: "invalid control" });
+          return;
+        }
         if (this.controlMode === "host" && att.id !== this.hostId) {
-          ws.send(JSON.stringify({ type: "error", reason: "not authorized to control" } satisfies ServerMessage));
+          this.send(ws, { type: "error", reason: "not authorized to control" });
           return;
         }
         const now = Date.now();
@@ -135,8 +163,12 @@ export class RoomDurableObject {
         break;
       }
       case "setMode": {
+        if (msg.mode !== "host" && msg.mode !== "everyone") {
+          this.send(ws, { type: "error", reason: "invalid mode" });
+          return;
+        }
         if (att.id !== this.hostId) {
-          ws.send(JSON.stringify({ type: "error", reason: "only the host can change mode" } satisfies ServerMessage));
+          this.send(ws, { type: "error", reason: "only the host can change mode" });
           return;
         }
         this.controlMode = msg.mode;
@@ -152,10 +184,21 @@ export class RoomDurableObject {
   }
 
   async webSocketClose(ws: WebSocket): Promise<void> {
+    await this.cleanup(ws);
+  }
+
+  // Abnormal disconnects (laptop sleep, network loss) may surface here instead of
+  // (or before) webSocketClose. Run the same cleanup so a dropped host is replaced
+  // and presence stays accurate. Cleanup is idempotent, so running it twice is safe.
+  async webSocketError(ws: WebSocket): Promise<void> {
+    await this.cleanup(ws);
+  }
+
+  private async cleanup(ws: WebSocket): Promise<void> {
     const att = ws.deserializeAttachment() as Attachment;
 
     if (att.id === this.hostId) {
-      const others = this.ctx.getWebSockets().filter((s) => s !== ws);
+      const others = this.helloedSockets(ws); // only promote real participants
       if (others.length > 0) {
         const next = others[0]!;
         const na = next.deserializeAttachment() as Attachment;

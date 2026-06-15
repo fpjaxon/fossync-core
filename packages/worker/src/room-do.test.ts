@@ -151,4 +151,58 @@ describe("RoomDurableObject host promotion", () => {
     expect(state.hostId).toBe(welcomeB.youId);
     b.close();
   });
+
+  it("does not promote a socket that never completed hello", async () => {
+    const a = await connect("PROMO01"); // host
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+
+    const b = await connect("PROMO01"); // helloed guest
+    send(b, { type: "hello", name: "Bob" });
+    const welcomeB = await nextMessage(b, (m) => m.type === "welcome");
+    if (welcomeB.type !== "welcome") throw new Error("bad");
+
+    const c = await connect("PROMO01"); // connects but never sends hello
+
+    const stateP = nextMessage(b, (m) => m.type === "state");
+    a.close(); // host leaves
+    const state = await stateP;
+    if (state.type !== "state") throw new Error("bad");
+    expect(state.hostId).toBe(welcomeB.youId); // Bob, never the un-helloed socket
+    b.close();
+    c.close();
+  });
+});
+
+describe("RoomDurableObject input validation", () => {
+  it("rejects a control with a non-finite mediaTime", async () => {
+    const a = await connect("VAL01");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+
+    a.send(JSON.stringify({ type: "control", action: "play" })); // missing mediaTime
+    const err = await nextMessage(a, (m) => m.type === "error");
+    expect(err.type).toBe("error");
+    a.close();
+  });
+
+  it("rejects an invalid control mode (so the host guard cannot fail open)", async () => {
+    const a = await connect("VAL02"); // host
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+
+    a.send(JSON.stringify({ type: "setMode", mode: "garbage" }));
+    const err = await nextMessage(a, (m) => m.type === "error");
+    expect(err.type).toBe("error");
+    a.close();
+  });
+
+  it("ignores messages from a socket that has not sent hello", async () => {
+    const a = await connect("VAL03");
+    send(a, { type: "ping", t0: 999 }); // gated — must be ignored, no pong
+    send(a, { type: "hello", name: "Alice" });
+    const first = await nextMessage(a, () => true); // the gated ping must not have produced a pong first
+    expect(first.type).toBe("welcome");
+    a.close();
+  });
 });
