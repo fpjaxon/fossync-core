@@ -6,12 +6,17 @@ import { randomName } from "../../src/name-gen";
 import { getOrCreateName, setName } from "../../src/name-store";
 import { localNameStorage } from "../../src/storage";
 import { isSupportedContentUrl } from "../../src/supported";
+import { getRelay, setRelayOrigin, resetRelay, normalizeRelayUrl } from "../../src/relay";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const nameInput = $("name") as HTMLInputElement;
+const relayInput = $("relay") as HTMLInputElement;
+const mainView = $("main");
+const settingsView = $("settings");
 const idleView = $("idle");
 const syncedView = $("synced");
 const capacityView = $("capacity");
+const relayState = $("relayState");
 const roomLabel = $("room");
 const statusEl = $("status");
 
@@ -45,8 +50,10 @@ function showCapacity(): void {
   capacityView.classList.remove("hidden");
 }
 
-// Popup state is derived from the active tab's #vsync, so it survives open/close.
-async function render(): Promise<void> {
+// Main view, with idle/synced derived from the active tab's #vsync (survives open/close).
+async function renderMain(): Promise<void> {
+  settingsView.classList.add("hidden");
+  mainView.classList.remove("hidden");
   try {
     const tab = await activeTab();
     const code = tab?.url ? parseRoomCode(new URL(tab.url).hash) : null;
@@ -55,6 +62,25 @@ async function render(): Promise<void> {
   } catch {
     showIdle();
   }
+}
+
+async function renderRelayState(): Promise<void> {
+  const relay = await getRelay();
+  if (relay.isOfficial) {
+    relayState.className = "relay-state official";
+    relayState.textContent = "✓ Using the official relay (fossync.cloud).";
+  } else {
+    relayState.className = "relay-state custom";
+    relayState.textContent = `⚠ Custom relay: ${relay.wsOrigin}`;
+  }
+}
+
+async function showSettings(): Promise<void> {
+  mainView.classList.add("hidden");
+  settingsView.classList.remove("hidden");
+  const relay = await getRelay();
+  relayInput.value = relay.isOfficial ? "" : relay.httpOrigin;
+  await renderRelayState();
 }
 
 async function initName(): Promise<void> {
@@ -76,6 +102,9 @@ nameInput.addEventListener("change", () => {
   }
 });
 
+$("gear").addEventListener("click", () => void showSettings());
+$("back").addEventListener("click", () => { void renderMain(); setStatus(""); });
+
 $("startSync").addEventListener("click", async () => {
   setStatus("starting…");
   try {
@@ -84,7 +113,8 @@ $("startSync").addEventListener("click", async () => {
       setStatus("open the harness, a YouTube video, or a Crunchyroll episode, then Start Sync");
       return;
     }
-    const res = await fetch(newRoomUrl());
+    const relay = await getRelay();
+    const res = await fetch(newRoomUrl(relay.httpOrigin));
     if (res.status === 503) {
       showCapacity();
       setStatus("");
@@ -123,5 +153,32 @@ $("openHarness").addEventListener("click", () => {
   void browser.tabs.create({ url: HARNESS_ORIGIN });
 });
 
+$("saveRelay").addEventListener("click", async () => {
+  const raw = relayInput.value.trim();
+  if (!raw) {
+    await resetRelay();
+    relayInput.value = "";
+    await renderRelayState();
+    setStatus("using the official relay");
+    return;
+  }
+  const origin = normalizeRelayUrl(raw);
+  if (!origin) {
+    setStatus("invalid relay URL");
+    return;
+  }
+  await setRelayOrigin(origin);
+  relayInput.value = origin;
+  await renderRelayState();
+  setStatus("relay saved");
+});
+
+$("useOfficial").addEventListener("click", async () => {
+  await resetRelay();
+  relayInput.value = "";
+  await renderRelayState();
+  setStatus("using the official relay");
+});
+
 void initName();
-void render();
+void renderMain();

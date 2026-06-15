@@ -1,7 +1,7 @@
 import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
 import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
-import { WORKER_WS_ORIGIN, isOfficialRelay } from "./config";
+import { getRelay } from "./relay";
 import { parseRoomCode, removeInvite, buildInviteUrl } from "./invite";
 import { randomName } from "./name-gen";
 import { getOrCreateName } from "./name-store";
@@ -39,8 +39,6 @@ export function startPageSync(site: SiteModule): void {
   sidebar.onLeave(() => leaveRoom());
   sidebar.onChatSend((text) => client?.sendChat(text));
   sidebar.onReactionSend((emoji) => client?.sendReaction(emoji));
-  // Official builds talk only to fossync.cloud; a build repointed elsewhere warns.
-  if (!isOfficialRelay) sidebar.showRelayWarning(WORKER_WS_ORIGIN);
 
   // Build the per-video sync session. The room connection (client) outlives this,
   // so an episode change just swaps the session/adapter onto the new <video>.
@@ -104,10 +102,13 @@ export function startPageSync(site: SiteModule): void {
   }
 
   async function connectTo(code: string): Promise<void> {
-    console.log("[fossync] connecting to room", code, "via", roomSocketUrl(code));
     teardown();
     const gen = generation;
     currentCode = code;
+    const relay = await getRelay();
+    if (gen !== generation) return; // superseded
+    console.log("[fossync] connecting to room", code, "via", roomSocketUrl(relay.wsOrigin, code));
+    if (!relay.isOfficial) sidebar.showRelayWarning(relay.wsOrigin);
     sidebar.setRoom(code);
     sidebar.setInvite(window.location.href);
     sidebar.setStatus("● looking for video…");
@@ -122,7 +123,7 @@ export function startPageSync(site: SiteModule): void {
     const name = await getOrCreateName(localNameStorage, () => randomName());
     if (gen !== generation) return; // superseded
     client = new SyncClient({
-      url: roomSocketUrl(code),
+      url: roomSocketUrl(relay.wsOrigin, code),
       name,
       pingCount: 5,
       createSocket: (url) => new WebSocket(url),

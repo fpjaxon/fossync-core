@@ -1,12 +1,11 @@
 export const WORKER_ORIGIN = "https://fossync.cloud";
 export const WORKER_WS_ORIGIN = "wss://fossync.cloud";
 
-// The relay Floatpoint operates. The in-extension warning compares the configured
-// relay (WORKER_WS_ORIGIN) against this fixed reference, so a build repointed at a
-// self-hosted/third-party relay surfaces the warning. The official build leaves them
-// equal, so it never shows. (A custom build is free to remove the warning.)
+// The relay Floatpoint operates — the fixed reference the in-extension warning
+// compares the *configured* relay against (see relay.ts). The official build
+// defaults to it; point the extension at another relay and the sidebar warns.
+// (A custom build is free to change this reference or drop the warning.)
 export const OFFICIAL_RELAY_WS_ORIGIN = "wss://fossync.cloud";
-export const isOfficialRelay = WORKER_WS_ORIGIN === OFFICIAL_RELAY_WS_ORIGIN;
 
 // The deployed harness (primary — enables cross-machine testing) and the local
 // dev server. Order matters: HARNESS_ORIGIN (what "Open harness" opens) is the first.

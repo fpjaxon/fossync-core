@@ -5,45 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>fossync</title>
     <style>
-      body { font-family: system-ui, sans-serif; width: 300px; margin: 0; padding: 12px; }
-      .row { display: flex; gap: 6px; align-items: center; margin: 6px 0; }
-      label { font-size: 12px; flex: 1; display: flex; gap: 6px; align-items: center; }
-      input { flex: 1; min-width: 0; }
-      button { cursor: pointer; }
+      :root { color-scheme: dark; }
+      body {
+        width: 300px; margin: 0; padding: 0;
+        font: 13px/1.45 system-ui, -apple-system, sans-serif;
+        background: #16161a; color: #e8e8ea;
+      }
+      .top { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-bottom: 1px solid #2a2a30; }
+      .brand { font-weight: 700; color: #fff; flex: 1; }
+      .icon-btn { background: none; border: none; color: #9a9aa2; font-size: 16px; cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1; }
+      .icon-btn:hover { color: #e8e8ea; background: #23232a; }
+      .pad { padding: 12px; }
       .hidden { display: none; }
-      #room { font-weight: 600; }
-      .hint { font-size: 12px; color: #666; line-height: 1.4; margin: 6px 0; }
-      #status { font: 12px ui-monospace, monospace; color: #444; margin-top: 8px; min-height: 1.2em; }
-      #capacity { text-align: center; padding: 10px 4px 4px; }
+      label.field { display: flex; flex-direction: column; gap: 5px; font: 12px ui-monospace, monospace; color: #9a9aa2; margin-bottom: 11px; }
+      input {
+        box-sizing: border-box; width: 100%; background: #0f0f12; border: 1px solid #2a2a30;
+        border-radius: 8px; padding: 8px 9px; color: #e8e8ea; font: 13px system-ui, sans-serif;
+      }
+      input::placeholder { color: #6b6b73; }
+      .btn { background: #23232a; color: #e8e8ea; border: none; border-radius: 8px; padding: 8px 12px; font: 13px system-ui, sans-serif; cursor: pointer; }
+      .btn:hover { background: #2e2e36; }
+      .btn--primary { background: #1f7a4d; color: #eafff2; }
+      .btn--primary:hover { background: #25925c; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .row .btn { flex: 1; }
+      .hint { font-size: 11.5px; color: #6b6b73; line-height: 1.5; margin: 9px 0 0; }
+      #room { font-weight: 700; color: #3ddc84; }
+      .synced-line { color: #3ddc84; font: 12px ui-monospace, monospace; margin-bottom: 4px; }
+      #status { font: 11px ui-monospace, monospace; color: #9a9aa2; padding: 0 12px 10px; min-height: 1.2em; }
+      #capacity { text-align: center; padding-top: 4px; }
       #capacity .sad { font-size: 34px; line-height: 1; }
-      #capacity .cap-msg { font-size: 13px; color: #444; line-height: 1.5; margin-top: 8px; }
+      #capacity .cap-msg { font-size: 12.5px; color: #b9b9c0; line-height: 1.5; margin-top: 8px; }
+      .relay-state { font: 11.5px ui-monospace, monospace; margin: 0 0 11px; line-height: 1.45; }
+      .relay-state.official { color: #3ddc84; }
+      .relay-state.custom { color: #ffd479; }
+      .settings-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-weight: 600; color: #fff; }
     </style>
   </head>
   <body>
-    <div class="row">
-      <label>Name <input id="name" placeholder="display name" /></label>
+    <div class="top">
+      <span class="brand">◆ fossync</span>
+      <button id="gear" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
     </div>
 
-    <div id="idle">
+    <div id="main" class="pad">
+      <label class="field">Display name<input id="name" placeholder="display name" /></label>
+
+      <div id="idle">
+        <div class="row">
+          <button id="startSync" class="btn btn--primary">Start Sync</button>
+          <button id="openHarness" class="btn">Open harness</button>
+        </div>
+      </div>
+
+      <div id="synced" class="hidden">
+        <div class="synced-line">● Synced — room <span id="room"></span></div>
+        <p class="hint">Invite people, see who's watching, and leave from the fossync panel on the page →</p>
+        <div class="row"><button id="stop" class="btn">Stop sync</button></div>
+      </div>
+
+      <div id="capacity" class="hidden">
+        <div class="sad">😔</div>
+        <div class="cap-msg">fossync Cloud is at capacity right now. We're working on making room — please check back in a little while.</div>
+      </div>
+    </div>
+
+    <div id="settings" class="pad hidden">
+      <div class="settings-head"><button id="back" class="icon-btn" aria-label="Back">←</button> Settings</div>
+      <label class="field">Relay URL<input id="relay" placeholder="https://fossync.cloud" spellcheck="false" /></label>
+      <div id="relayState" class="relay-state"></div>
       <div class="row">
-        <button id="startSync">Start Sync</button>
-        <button id="openHarness">Open harness</button>
+        <button id="saveRelay" class="btn btn--primary">Save</button>
+        <button id="useOfficial" class="btn">Use official</button>
       </div>
-    </div>
-
-    <div id="synced" class="hidden">
-      <div class="row">● Synced — room <span id="room"></span></div>
-      <div class="hint">Invite people, see who's watching, and leave from the fossync panel on the page →</div>
-      <div class="row"><button id="stop">Stop sync</button></div>
-    </div>
-
-    <div id="capacity" class="hidden">
-      <div class="sad">😔</div>
-      <div class="cap-msg">
-        fossync Cloud is at capacity right now — there are more watch parties
-        running than we can host. We're working on making room. Please check back
-        in a little while.
-      </div>
+      <p class="hint">Point fossync at a self-hosted relay (advanced). The official relay is fossync.cloud. A relay you don't run can see your room and your IP and control playback — only connect to relays you trust.</p>
     </div>
 
     <div id="status"></div>
