@@ -7,7 +7,8 @@ used, and how it is handled.
 
 fossync Cloud is operated by **Floatpoint, LLC** and provides the backend service
 for the fossync browser extension. fossync lets people watch content together by
-synchronizing playback controls (such as play, pause, and seek). fossync Cloud
+synchronizing playback controls (such as play, pause, and seek), plus lightweight
+text chat and emoji reactions. fossync Cloud
 does **not** stream, store, proxy, record, or redistribute any video or media
 content. Participants stream media directly from the original website or service
 they are viewing.
@@ -63,6 +64,8 @@ time:
 * Room identifiers
 * Playback control events (such as play, pause, and seek actions)
 * Participant display names
+* Chat messages and emoji reactions
+* The URL of the page the room is currently watching
 
 This information exists only for the operation of an active room and is relayed in
 real time to the other participants in that room.
@@ -73,8 +76,10 @@ fossync Cloud uses the limited information it receives solely to operate the
 service. Specifically:
 
 * Playback control events are relayed to other participants in the same room.
+* Chat messages and reactions are relayed to other participants in the same room.
 * Display names are shown to other participants in the same room.
-* Room state is maintained temporarily so participants remain synchronized.
+* Room state (including the current content URL) is maintained temporarily so
+  participants remain synchronized and on the same content.
 
 We do not use this information for advertising, profiling, analytics, marketing, or
 user tracking.
@@ -92,24 +97,20 @@ small room record in Durable Object storage containing only:
 * the current playback position,
 * whether playback is paused,
 * the playback rate,
-* the room's control mode (who is allowed to control playback), and
+* the room's control mode (who is allowed to control playback),
+* the URL of the page the room is currently watching, and
 * a randomly generated identifier for the current host.
 
 This record contains no names, no messages, no viewing history, and no information
 that identifies any person. It exists only while the room is active and is
 **automatically deleted when the last participant leaves the room**.
 
-We do not retain playback history. We do not maintain logs of room activity or
-message contents. After a room ends, there is no room data left for us to keep.
+Chat messages and reactions are relayed live between participants and are never
+written to storage. We do not retain playback history. We do not maintain logs of
+room activity or message contents. After a room ends, there is no room data left
+for us to keep.
 
 ## Planned Features
-
-### Chat (not yet available)
-
-Room chat is not currently part of fossync Cloud. If chat is introduced in the
-future, messages will be relayed in real time between participants in the same room
-and will not be archived or stored by fossync Cloud. We will update this Privacy
-Policy before any such feature becomes available.
 
 ### Anonymous accounts
 
@@ -125,7 +126,8 @@ When you join a room, the following information is shared with the other
 participants in that same room:
 
 * Your display name
-* Your playback control actions
+* Your playback control actions (including changing the episode/page)
+* Your chat messages and emoji reactions
 
 This sharing is necessary for the watch-party experience to function. Participants
 in a room can see information that other participants choose to send within that
