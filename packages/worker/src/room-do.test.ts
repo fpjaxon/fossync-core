@@ -93,6 +93,25 @@ describe("RoomDurableObject control", () => {
     a.close();
     b.close();
   });
+
+  it("tags the broadcast state with who performed the control", async () => {
+    const a = await connect("ACTOR1");
+    send(a, { type: "hello", name: "Alice" });
+    const welcomeA = await nextMessage(a, (m) => m.type === "welcome");
+    if (welcomeA.type !== "welcome") throw new Error("bad");
+
+    const b = await connect("ACTOR1");
+    send(b, { type: "hello", name: "Bob" });
+    await nextMessage(b, (m) => m.type === "welcome");
+
+    const stateP = nextMessage(b, (m) => m.type === "state");
+    send(a, { type: "control", action: "seek", mediaTime: 30 });
+    const state = await stateP;
+    if (state.type !== "state") throw new Error("bad");
+    expect(state.actor).toEqual({ id: welcomeA.youId, name: "Alice" });
+    a.close();
+    b.close();
+  });
 });
 
 describe("RoomDurableObject authorization", () => {

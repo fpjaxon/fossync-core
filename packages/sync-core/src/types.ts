@@ -14,6 +14,12 @@ export interface Participant {
   name: string;
 }
 
+/** Who performed a playback action — attached to `state` for the activity feed. */
+export interface Actor {
+  id: string;
+  name: string;
+}
+
 export interface RoomSnapshot {
   controlMode: ControlMode;
   hostId: string;
@@ -34,7 +40,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: "welcome"; youId: string; snapshot: RoomSnapshot }
   | { type: "pong"; t0: number; t1: number }
-  | { type: "state"; playback: Playback; controlMode: ControlMode; hostId: string }
+  | { type: "state"; playback: Playback; controlMode: ControlMode; hostId: string; actor?: Actor }
   | { type: "presence"; participants: Participant[] }
   | { type: "error"; reason: string };
 

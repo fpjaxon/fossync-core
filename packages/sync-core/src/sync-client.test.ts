@@ -87,6 +87,22 @@ describe("SyncClient", () => {
     expect(client.getControlMode()).toBe("host");
   });
 
+  it("exposes the actor that caused the latest state change", () => {
+    const { latest, client } = setup();
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    expect(client.getActor()).toBeNull();
+    socket.serverSend({
+      type: "state",
+      controlMode: "everyone",
+      hostId: "me",
+      playback: { paused: false, anchorMediaTime: 5, anchorServerTime: 1000, rate: 1 },
+      actor: { id: "u2", name: "Bob" },
+    });
+    expect(client.getActor()).toEqual({ id: "u2", name: "Bob" });
+  });
+
   it("serializes control and setMode commands", () => {
     const { latest, client } = setup();
     client.connect();

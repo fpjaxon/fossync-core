@@ -1,4 +1,5 @@
 import type {
+  Actor,
   ClientMessage,
   ControlMode,
   Participant,
@@ -94,12 +95,13 @@ export class RoomDurableObject {
     ws.send(JSON.stringify(msg));
   }
 
-  private stateMessage(): ServerMessage {
+  private stateMessage(actor?: Actor): ServerMessage {
     return {
       type: "state",
       playback: this.playback,
       controlMode: this.controlMode,
       hostId: this.hostId ?? "",
+      ...(actor ? { actor } : {}),
     };
   }
 
@@ -159,7 +161,7 @@ export class RoomDurableObject {
           this.playback = { ...this.playback, anchorMediaTime: msg.mediaTime, anchorServerTime: now };
         }
         await this.persist();
-        this.broadcast(this.stateMessage());
+        this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
         break;
       }
       case "setMode": {
@@ -173,7 +175,7 @@ export class RoomDurableObject {
         }
         this.controlMode = msg.mode;
         await this.persist();
-        this.broadcast(this.stateMessage());
+        this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
         break;
       }
       case "bye": {

@@ -1,5 +1,6 @@
 import { computeSample, pickBestOffset, type PingSample } from "./clock";
 import type {
+  Actor,
   ClientMessage,
   ControlAction,
   ControlMode,
@@ -36,6 +37,7 @@ export class SyncClient {
   private controlMode: ControlMode | null = null;
   private hostId: string | null = null;
   private participants: Participant[] = [];
+  private actor: Actor | null = null;
   private samples: PingSample[] = [];
   private reconnectMs = BASE_RECONNECT_MS;
   private errorCb: ((reason: string) => void) | null = null;
@@ -93,6 +95,7 @@ export class SyncClient {
         break;
       case "state":
         this.applySnapshot(msg.controlMode, msg.hostId, msg.playback);
+        this.actor = msg.actor ?? null;
         break;
       case "presence":
         this.participants = msg.participants;
@@ -130,6 +133,8 @@ export class SyncClient {
   getControlMode(): ControlMode | null { return this.controlMode; }
   getHostId(): string | null { return this.hostId; }
   getParticipants(): Participant[] { return this.participants; }
+  /** Who caused the most recent `state` change (null if system-initiated/unknown). */
+  getActor(): Actor | null { return this.actor; }
 
   sendControl(action: ControlAction, mediaTime: number): void {
     this.send({ type: "control", action, mediaTime });
