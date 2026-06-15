@@ -3,9 +3,10 @@ import { SELF, env } from "cloudflare:test";
 import { MAX_ROOMS } from "./index";
 
 describe("router", () => {
-  it("returns a room code from /new", async () => {
+  it("returns a room code from /new, with CORS open (reachable from any relay origin)", async () => {
     const res = await SELF.fetch("https://example.com/new");
     expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = (await res.json()) as { code: string };
     expect(body.code).toMatch(/^[A-Z0-9]{6}$/);
   });

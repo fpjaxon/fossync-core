@@ -44,12 +44,15 @@ export default {
     }
 
     if (url.pathname === "/new") {
+      // Public, side-effect-light endpoint — allow cross-origin so the extension
+      // popup can reach a self-hosted relay's /new without a host permission.
+      const cors = { "Access-Control-Allow-Origin": "*" };
       const res = await registry(env).fetch("https://registry/count");
       const { count } = (await res.json()) as { count: number };
       if (count >= MAX_ROOMS) {
-        return Response.json({ error: "at_capacity" }, { status: 503 });
+        return Response.json({ error: "at_capacity" }, { status: 503, headers: cors });
       }
-      return Response.json({ code: genCode() });
+      return Response.json({ code: genCode() }, { headers: cors });
     }
 
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9]+)$/);
