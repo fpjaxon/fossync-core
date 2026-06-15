@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { isSupportedContentUrl } from "./supported";
 
 describe("isSupportedContentUrl", () => {
-  it("accepts the local harness origin", () => {
+  it("accepts the deployed and local harness origins", () => {
+    expect(isSupportedContentUrl("https://harness.fossync.cloud/")).toBe(true);
+    expect(isSupportedContentUrl("https://harness.fossync.cloud/#vsync=ABC")).toBe(true);
     expect(isSupportedContentUrl("http://localhost:5173/")).toBe(true);
     expect(isSupportedContentUrl("http://localhost:5173/#vsync=ABC")).toBe(true);
   });
