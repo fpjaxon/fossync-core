@@ -30,6 +30,8 @@ export function startPageSync(site: SiteModule): void {
 
   const sidebar = createSidebar();
   sidebar.onLeave(() => leaveRoom());
+  sidebar.onChatSend((text) => client?.sendChat(text));
+  sidebar.onReactionSend((emoji) => client?.sendReaction(emoji));
 
   function teardown(): void {
     generation++; // invalidate any in-flight connectTo
@@ -74,6 +76,7 @@ export function startPageSync(site: SiteModule): void {
       sidebar.setStatus("● no video found on this page");
       return;
     }
+    sidebar.setVideo(video);
     const name = await getOrCreateName(localNameStorage, () => randomName());
     if (gen !== generation) return; // superseded
     client = new SyncClient({
@@ -83,8 +86,11 @@ export function startPageSync(site: SiteModule): void {
       createSocket: (url) => new WebSocket(url),
       now: () => Date.now(),
       schedule: (fn, ms) => window.setTimeout(fn, ms),
+      getMediaTime: () => video.currentTime,
     });
     client.onError((reason) => console.warn("[fossync] server error:", reason));
+    client.onChat((m) => sidebar.addChat(m));
+    client.onReaction((m) => sidebar.showReaction(m.emoji));
     client.connect();
     session = new SyncSession({
       client,
