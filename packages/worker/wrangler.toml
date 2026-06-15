@@ -2,6 +2,9 @@ name = "fossync"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
+# Pin the account (the login has more than one); the fossync worker + fossync.cloud
+# custom domain live in the Floatpoint account.
+account_id = "b654800db7aae56c4efb698fd7399fff"
 
 [[durable_objects.bindings]]
 name = "ROOM"
