@@ -111,4 +111,20 @@ describe("SyncSession.tick", () => {
     session.tick();
     expect(seek).toHaveBeenCalled(); // reconcile resumes normally
   });
+
+  it("setPaused gates both reconciliation and intent forwarding", () => {
+    const { adapter, fireIntent } = fakeAdapter({ getCurrentTime: () => 9 });
+    const client = fakeClient(playing, 0);
+    const session = new SyncSession({ client, adapter, now: () => 3000, setInterval: () => 0 });
+
+    session.setPaused(true);
+    session.tick();
+    expect(adapter.seek).not.toHaveBeenCalled(); // reconcile gated while paused
+    fireIntent({ kind: "pause", mediaTime: 5 });
+    expect(client.sendControl).not.toHaveBeenCalled(); // intent gated while paused
+
+    session.setPaused(false);
+    session.tick();
+    expect(adapter.seek).toHaveBeenCalledWith(12.05); // resumes after unpause
+  });
 });

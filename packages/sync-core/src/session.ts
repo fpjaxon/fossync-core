@@ -24,10 +24,12 @@ export class SyncSession {
   private readonly cfg: ReconcileConfig;
   private intervalHandle: unknown = null;
   private suppressReconcileUntil = 0;
+  private paused = false;
 
   constructor(private readonly opts: SyncSessionOptions) {
     this.cfg = opts.cfg ?? DEFAULT_CONFIG;
     opts.adapter.onUserIntent((intent) => {
+      if (this.paused) return;
       opts.client.sendControl(intent.kind as ControlAction, intent.mediaTime);
       // Don't let the reconcile loop fight the user before the authoritative echo
       // lands (matters when RTT > tick): briefly pause reconciliation so a tick
@@ -47,7 +49,12 @@ export class SyncSession {
     }
   }
 
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+  }
+
   tick(): void {
+    if (this.paused) return;
     if (this.opts.now() < this.suppressReconcileUntil) return;
     const pb = this.opts.client.getPlayback();
     const offset = this.opts.client.getOffset();
