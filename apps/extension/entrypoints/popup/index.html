@@ -10,7 +10,9 @@
       label { font-size: 12px; flex: 1; display: flex; gap: 6px; align-items: center; }
       input { flex: 1; min-width: 0; }
       button { cursor: pointer; }
+      .hidden { display: none; }
       #invite { font: 11px ui-monospace, monospace; }
+      #room { font-weight: 600; }
       #status { font: 12px ui-monospace, monospace; color: #444; margin-top: 6px; min-height: 1.2em; }
     </style>
   </head>
@@ -18,14 +20,23 @@
     <div class="row">
       <label>Name <input id="name" placeholder="display name" /></label>
     </div>
-    <div class="row">
-      <button id="startRoom">Start a room</button>
-      <button id="openHarness">Open harness</button>
+
+    <div id="idle">
+      <div class="row">
+        <button id="startSync">Start Sync</button>
+        <button id="openHarness">Open harness</button>
+      </div>
     </div>
-    <div class="row">
-      <input id="invite" readonly placeholder="invite link appears here" />
-      <button id="copy">Copy</button>
+
+    <div id="synced" class="hidden">
+      <div class="row">Synced — room <span id="room"></span></div>
+      <div class="row">
+        <input id="invite" readonly />
+        <button id="copy">Copy</button>
+      </div>
+      <div class="row"><button id="stop">Stop</button></div>
     </div>
+
     <div id="status"></div>
     <script type="module" src="./main.ts"></script>
   </body>
