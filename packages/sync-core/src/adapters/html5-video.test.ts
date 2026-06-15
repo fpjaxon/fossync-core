@@ -86,4 +86,14 @@ describe("Html5VideoAdapter", () => {
     media.emit("play");
     expect(intents).toEqual([{ kind: "play", mediaTime: 5 }]);
   });
+
+  it("reports a play() rejected by the autoplay policy via onPlayBlocked", async () => {
+    const { media, adapter } = setup();
+    let blocked = false;
+    adapter.onPlayBlocked(() => { blocked = true; });
+    media.play = vi.fn(() => Promise.reject(new Error("NotAllowedError")));
+    adapter.play();
+    await new Promise((r) => setTimeout(r, 0)); // flush the rejection microtask
+    expect(blocked).toBe(true);
+  });
 });

@@ -18,6 +18,7 @@ export interface SiteModule {
 export function startPageSync(site: SiteModule): void {
   let client: SyncClient | null = null;
   let session: SyncSession | null = null;
+  let adapter: Html5VideoAdapter | null = null;
   let tickTimer: number | null = null;
   let stopAds: (() => void) | null = null;
   let currentCode: string | null = null;
@@ -48,6 +49,7 @@ export function startPageSync(site: SiteModule): void {
     prevState = null;
     session?.stop();
     session = null;
+    adapter = null;
     client?.close();
     client = null;
   }
@@ -92,9 +94,13 @@ export function startPageSync(site: SiteModule): void {
     client.onChat((m) => sidebar.addChat(m));
     client.onReaction((m) => sidebar.showReaction(m.emoji));
     client.connect();
+    adapter = new Html5VideoAdapter(video);
+    // The room may already be playing; browsers block our programmatic play() until
+    // the joiner makes a gesture, so prompt for one click that plays in sync.
+    adapter.onPlayBlocked(() => sidebar.showPlayGate(() => adapter?.play()));
     session = new SyncSession({
       client,
-      adapter: new Html5VideoAdapter(video),
+      adapter,
       now: () => Date.now(),
       setInterval: (fn, ms) => window.setInterval(fn, ms),
       clearInterval: (h) => window.clearInterval(h as number),
@@ -122,6 +128,7 @@ export function startPageSync(site: SiteModule): void {
     else sidebar.setStatus(`● synced · ${participants.length} watching`);
 
     sidebar.setParticipants(participants, youId, hostId);
+    if (adapter && !adapter.isPaused()) sidebar.hidePlayGate(); // playing now — gate not needed
 
     if (youId === null) return; // not in the room yet — no feed baseline / events
     const nameOf = (id: string) => participants.find((p) => p.id === id)?.name ?? null;

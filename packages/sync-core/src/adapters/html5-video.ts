@@ -17,6 +17,7 @@ const SUPPRESS_BACKSTOP_MS = 3000;
 
 export class Html5VideoAdapter implements PlayerAdapter {
   private intentCb: ((intent: UserIntent) => void) | null = null;
+  private blockedCb: (() => void) | null = null;
   // Per intent kind: expiry timestamps of programmatic ops still awaiting their DOM event.
   private readonly pending: Record<UserIntent["kind"], number[]> = { play: [], pause: [], seek: [] };
 
@@ -48,10 +49,17 @@ export class Html5VideoAdapter implements PlayerAdapter {
   getDuration(): number { return this.el.duration; }
   isPaused(): boolean { return this.el.paused; }
 
-  play(): void { this.markProgrammatic("play"); void this.el.play(); }
+  play(): void {
+    this.markProgrammatic("play");
+    // Browsers reject programmatic play() of unmuted media without a user gesture;
+    // surface that so the UI can prompt for one click rather than silently staying paused.
+    Promise.resolve(this.el.play()).catch(() => this.blockedCb?.());
+  }
   pause(): void { this.markProgrammatic("pause"); this.el.pause(); }
   seek(seconds: number): void { this.markProgrammatic("seek"); this.el.currentTime = seconds; }
   setPlaybackRate(rate: number): void { this.el.playbackRate = rate; }
 
   onUserIntent(cb: (intent: UserIntent) => void): void { this.intentCb = cb; }
+  /** Fires when a programmatic play() was rejected (autoplay policy needs a user gesture). */
+  onPlayBlocked(cb: () => void): void { this.blockedCb = cb; }
 }

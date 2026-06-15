@@ -38,6 +38,9 @@ export interface Sidebar {
   showReaction(emoji: string): void;
   setInvite(url: string): void;
   setVideo(video: HTMLVideoElement | null): void;
+  /** Prompt for the one user gesture browsers require before programmatic play. */
+  showPlayGate(onPlay: () => void): void;
+  hidePlayGate(): void;
   onLeave(cb: () => void): void;
   onChatSend(cb: (text: string) => void): void;
   onReactionSend(cb: (emoji: string) => void): void;
@@ -50,6 +53,7 @@ export function createSidebar(): Sidebar {
   let leaveCb: (() => void) | null = null;
   let chatSendCb: ((text: string) => void) | null = null;
   let reactionSendCb: ((emoji: string) => void) | null = null;
+  let gatePlayCb: (() => void) | null = null;
   let inviteUrl = "";
   let collapsed = false;
   let youId: string | null = null;
@@ -126,8 +130,17 @@ export function createSidebar(): Sidebar {
   leaveBtn.addEventListener("click", () => leaveCb?.());
   footer.append(copyBtn, leaveBtn);
 
+  // One-click gate over the video — the gesture browsers require before we can
+  // programmatically play a joiner whose room is already playing.
+  const playGate = el("button",
+    "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:auto;display:none;" +
+    "background:rgba(18,18,22,.93);color:#fff;border:1px solid #3ddc84;border-radius:12px;padding:14px 22px;" +
+    `cursor:pointer;font:${FONT};font-size:15px;box-shadow:0 8px 28px rgba(0,0,0,.55);`,
+    "▶  Click to watch in sync");
+  playGate.addEventListener("click", () => { const cb = gatePlayCb; hidePlayGate(); cb?.(); });
+
   panel.append(header, status, sectionHead("WATCHING"), watching, sectionHead("FEED"), feed, reactionsBar, chatRow, footer);
-  root.append(reactionLayer, tab, panel);
+  root.append(reactionLayer, tab, panel, playGate);
   document.documentElement.appendChild(root);
 
   // Fullscreen: move the whole sidebar into the fullscreened element (unless it's a
@@ -153,6 +166,20 @@ export function createSidebar(): Sidebar {
     feed.append(node);
     while (feed.childElementCount > 200) feed.firstElementChild?.remove();
     feed.scrollTop = feed.scrollHeight;
+  }
+
+  function showPlayGate(onPlay: () => void): void {
+    if (playGate.style.display === "block") return; // already prompting
+    const rect = video?.getBoundingClientRect();
+    playGate.style.left = rect && rect.width ? `${rect.left + rect.width / 2}px` : "50%";
+    playGate.style.top = rect && rect.height ? `${rect.top + rect.height / 2}px` : "50%";
+    gatePlayCb = onPlay;
+    playGate.style.display = "block";
+  }
+
+  function hidePlayGate(): void {
+    gatePlayCb = null;
+    playGate.style.display = "none";
   }
 
   return {
@@ -202,6 +229,8 @@ export function createSidebar(): Sidebar {
       anim.onfinish = () => node.remove();
     },
     setInvite: (url) => { inviteUrl = url; },
+    showPlayGate,
+    hidePlayGate,
     onLeave: (cb) => { leaveCb = cb; },
     onChatSend: (cb) => { chatSendCb = cb; },
     onReactionSend: (cb) => { reactionSendCb = cb; },
