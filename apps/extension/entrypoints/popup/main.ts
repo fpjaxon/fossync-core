@@ -22,6 +22,14 @@ async function activeTab() {
   return tab;
 }
 
+function isHarness(url: string): boolean {
+  try {
+    return new URL(url).origin === HARNESS_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
 async function initName(): Promise<void> {
   try {
     currentName = await getOrCreateName(localNameStorage, () => randomName());
@@ -56,12 +64,20 @@ $("startRoom").addEventListener("click", async () => {
   setStatus("creating room…");
   try {
     const tab = await activeTab();
-    if (!tab?.id || !tab.url || !tab.url.startsWith(HARNESS_ORIGIN)) {
+    if (!tab?.id || !tab.url || !isHarness(tab.url)) {
       setStatus("open the harness first, then Start a room");
       return;
     }
     const res = await fetch(newRoomUrl());
-    const body = (await res.json()) as { code: string };
+    if (!res.ok) {
+      setStatus(`room creation failed (${res.status})`);
+      return;
+    }
+    const body = (await res.json()) as { code?: unknown };
+    if (typeof body.code !== "string" || !body.code) {
+      setStatus("room creation failed (bad response)");
+      return;
+    }
     const invite = buildInviteUrl(tab.url, body.code);
     await browser.tabs.update(tab.id, { url: invite });
     inviteInput.value = invite;

@@ -1,6 +1,7 @@
 import { defineContentScript } from "wxt/sandbox";
 import { SyncClient, SyncSession, Html5VideoAdapter } from "@video-sync/sync-core";
 import { roomSocketUrl } from "../src/urls";
+import { HARNESS_ORIGIN } from "../src/config";
 import { parseRoomCode } from "../src/invite";
 import { randomName } from "../src/name-gen";
 import { getOrCreateName } from "../src/name-store";
@@ -9,13 +10,19 @@ import { localNameStorage } from "../src/storage";
 export default defineContentScript({
   matches: ["http://localhost:5173/*"],
   main() {
+    // The :5173 match pattern should scope injection, but match-pattern hosts
+    // officially can't carry a port — guard by origin so we never run elsewhere.
+    if (window.location.origin !== HARNESS_ORIGIN) return;
+
     let client: SyncClient | null = null;
     let session: SyncSession | null = null;
     let badgeTimer: number | null = null;
     let currentCode: string | null = null;
+    let generation = 0;
     const badge = createBadge();
 
     function teardown(): void {
+      generation++; // invalidate any in-flight connectTo
       if (badgeTimer !== null) {
         window.clearInterval(badgeTimer);
         badgeTimer = null;
@@ -41,15 +48,19 @@ export default defineContentScript({
 
     async function connectTo(code: string): Promise<void> {
       teardown();
+      const gen = generation;
       currentCode = code;
       badge.show();
       badge.set(`room ${code}\nlooking for video…`);
       const video = await waitForVideo();
+      if (gen !== generation) return; // a newer connect/teardown superseded us
       if (!video) {
+        currentCode = null; // allow a later hashchange to retry once a video mounts
         badge.set(`room ${code}\nno <video> on this page`);
         return;
       }
       const name = await getOrCreateName(localNameStorage, () => randomName());
+      if (gen !== generation) return; // superseded during the name lookup
       client = new SyncClient({
         url: roomSocketUrl(code),
         name,
