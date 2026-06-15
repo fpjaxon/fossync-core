@@ -1,0 +1,11 @@
+# Static test-harness page, served as an assets-only Worker at harness.fossync.cloud.
+# The "harness" Worker + its custom domain were created in the Floatpoint dashboard;
+# `wrangler deploy` just pushes the built static content (no server-side code).
+name = "harness"
+compatibility_date = "2026-01-01"
+# Pin the account (the login has more than one); harness + harness.fossync.cloud
+# live in the Floatpoint account, same as the fossync worker.
+account_id = "b654800db7aae56c4efb698fd7399fff"
+
+[assets]
+directory = "./dist"
