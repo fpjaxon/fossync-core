@@ -1,0 +1,83 @@
+name: Site support request
+description: Ask for a new streaming site, or report that a supported one stopped working.
+labels: ["site-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Each site fossync supports is a small **site module** — usually just the few
+        lines that locate the page's video player. The room logic, syncing, and sidebar
+        are all shared, so adding a site is a tiny, self-contained change.
+
+        If you'd like to write it yourself, the
+        [Add a new site](https://github.com/fpjaxon/fossync-core/blob/main/CONTRIBUTING.md#add-a-new-site)
+        section of CONTRIBUTING.md walks through it. Either way, the details below help.
+
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: What's this about?
+      options:
+        - Add support for a new site
+        - A supported site stopped working
+    validations:
+      required: true
+
+  - type: input
+    id: site-name
+    attributes:
+      label: Site name
+      placeholder: e.g. Vimeo, Netflix, Max
+    validations:
+      required: true
+
+  - type: input
+    id: example-url
+    attributes:
+      label: Example watch URL
+      description: A page with a video on it (you can use a public/sample one).
+      placeholder: https://example.com/watch/...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: player-type
+    attributes:
+      label: Does it use a standard HTML5 video player?
+      description: >-
+        DRM is usually fine — Crunchyroll plays Widevine through Bitmovin and still
+        syncs, because DRM protects the stream, not the player's timeline.
+      options:
+        - "Yes — a normal HTML5 <video>"
+        - "It's a DRM player (e.g. Bitmovin / Widevine)"
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: account
+    attributes:
+      label: Does testing need a paid account or specific region?
+      placeholder: e.g. "Free account works" / "Needs a paid plan" / "US only"
+    validations:
+      required: false
+
+  - type: textarea
+    id: player-details
+    attributes:
+      label: Anything you know about the player
+      description: >-
+        Helpful if you know it: the CSS selector for the <video>, whether the site is a
+        single-page app that swaps episodes without reloading, whether it shows ads, etc.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched existing issues and this site isn't already requested or tracked.
+          required: true
+        - label: I'd be willing to contribute the site module myself (see CONTRIBUTING.md → Add a new site).
+          required: false
