@@ -112,20 +112,24 @@ for us to keep.
 
 ## Branded Share Links
 
-The **official fossync extension does not create "branded" share links** (links of
-the form `fossync.cloud/j/…`). An official invite is always the page you are
-watching with the room code added to it, so anyone you send it to can see exactly
-where it leads before opening it.
+fossync offers an optional **branded share link** — a short `fossync.cloud/j` link
+you can copy instead of the full page URL. It is **off by default**; turn it on in
+the extension's settings.
 
-Branded links are an opt-in feature of **custom, self-built** copies of the
-extension only. By design they carry the destination inside the link's *fragment*,
-which browsers never send to a server — so the relay that redirects the link does
-not receive the destination in its request logs, and no destination is stored
-anywhere. Even so, the page that performs the redirect is served by a relay: if you
-use a relay you do not operate, that relay's redirect page runs in your guests'
-browsers and could read the destination they are opening. The official extension
-refuses to point branded links at a relay other than the one you trust, which is
-why the feature is not part of the official build at all.
+By design, the destination page (and the room code, and an encrypted session's key)
+are encoded inside the link's *fragment* — the part after `#`, which browsers never
+send to a server. So opening a branded link sends fossync.cloud only the bare
+request for `/j`; the relay does not receive, log, or store where the link leads.
+The redirect to the real page is performed **by the fossync extension itself**, not
+by the server: the `/j` page is just a "get the extension" notice for anyone who
+doesn't have it.
+
+Because the extension does the redirect, the official extension only ever follows
+branded links on its own relay (`fossync.cloud`). A branded link pointing at any
+**other** relay is ignored by the official extension — it will not open it. This is
+deliberate: it means an untrusted relay can't use a branded link to run a redirect
+in your browser. Following branded links on a different relay requires a custom,
+self-built copy of the extension pointed at a relay you operate.
 
 ## Encrypted Sessions
 

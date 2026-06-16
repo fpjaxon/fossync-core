@@ -34,9 +34,8 @@ export function startPageSync(site: SiteModule): void {
   // Encrypted session: the base64url key from the share-link fragment (null = plaintext).
   // Threaded back into every invite/share link we rebuild so the key never gets dropped.
   let currentKeyB64: string | null = null;
-  // Relay origin + branded preference, captured on connect so the invite link
-  // (which may be rebuilt on episode change) doesn't need to re-read them.
-  let relayHttpOrigin = "";
+  // Branded-link preference, captured on connect so the invite link (which may be
+  // rebuilt on episode change) doesn't need to re-read it.
   let brandedOn = false;
   let adPlaying = false;
   let generation = 0;
@@ -133,14 +132,13 @@ export function startPageSync(site: SiteModule): void {
     if (gen !== generation) return; // superseded
     const relay = await getRelay();
     if (gen !== generation) return; // superseded
-    relayHttpOrigin = relay.httpOrigin;
-    brandedOn = __BRANDED__ && (await getBrandedUrls());
+    brandedOn = await getBrandedUrls();
     if (gen !== generation) return; // superseded
     console.log("[fossync] connecting to room", code, "via", roomSocketUrl(relay.wsOrigin, code));
     if (!relay.isOfficial) sidebar.showRelayWarning(relay.wsOrigin);
     sidebar.setRoom(code);
     sidebar.setEncrypted(!!cryptoKey);
-    sidebar.setInvite(buildShareUrl(cleanUrl(window.location.href), code, relayHttpOrigin, brandedOn, currentKeyB64 ?? undefined));
+    sidebar.setInvite(buildShareUrl(cleanUrl(window.location.href), code, brandedOn, currentKeyB64 ?? undefined));
     sidebar.setStatus("● looking for video…");
     sidebar.show();
     const video = await site.findVideo();
@@ -187,7 +185,7 @@ export function startPageSync(site: SiteModule): void {
     const clean = cleanUrl(url);
     const withCode = buildInviteUrl(clean, currentCode, currentKeyB64 ?? undefined);
     if (window.location.href !== withCode) history.replaceState(null, "", withCode); // re-add the room code (+ key) Crunchyroll dropped
-    sidebar.setInvite(buildShareUrl(clean, currentCode, relayHttpOrigin, brandedOn, currentKeyB64 ?? undefined));
+    sidebar.setInvite(buildShareUrl(clean, currentCode, brandedOn, currentKeyB64 ?? undefined));
     client.setContent(clean); // server gates by control mode + resets the timeline
     detachVideo();
     void reattach(generation);

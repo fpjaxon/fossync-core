@@ -6,18 +6,20 @@
 //   https://fossync.cloud/j#vsync=ABC123&u=<base64url(pageUrl)>
 //
 // The fragment is never sent in any HTTP request, so the relay that serves /j
-// receives neither the room code nor the page the party is watching. A static
-// page at /j (see packages/worker) reads the fragment in the browser and
-// redirects locally to `<pageUrl>#vsync=ABC123`.
+// receives neither the room code nor the page the party is watching. The fossync
+// extension's /j content script reads the fragment in the browser and redirects
+// locally to `<pageUrl>#vsync=ABC123`; the relay's /j route is just a passive
+// "install the extension" landing page.
 //
 // The format lives here, shared, so the extension's encoder
-// (apps/extension/src/branded.ts) and the worker's /j decoder can never drift:
-// the worker embeds `decodeBranded`'s own source into the page it serves.
+// (apps/extension/src/branded.ts) and its /j resolver
+// (apps/extension/entrypoints/join.content.ts) always agree.
 //
-// SECURITY: a relay you don't operate serves attacker-controlled JS at /j and
-// could read the fragment (the destination URL) before redirecting. That is why
-// the official extension never points branded links at a self-hosted relay — see
-// the build flag in apps/extension/src/branded.ts.
+// SECURITY: resolution happens in the extension, and the official build only ever
+// follows links on its own relay — the content script matches WORKER_ORIGIN/j
+// (= fossync.cloud/j). A branded link pointing at any other relay is ignored, so
+// an untrusted relay can't use one to run a redirect in your browser. Following
+// branded links on your own relay requires a self-hosted build (changed WORKER_ORIGIN).
 
 const PARAM_CODE = "vsync";
 const PARAM_URL = "u";
@@ -49,9 +51,8 @@ export function encodeBrandedFragment(pageUrl: string, code: string, key?: strin
  * decoded URL is not https (rejects javascript:/data:/http: — an open-redirect &
  * XSS guard for the redirect page).
  *
- * Deliberately self-contained (no references to module-scope helpers): the worker
- * serves `decodeBranded.toString()` verbatim as the /j page's inline script, so
- * the page and the extension always agree on the format. Keep it dependency-free.
+ * Self-contained and dependency-free, so it's easy to audit: the extension's /j
+ * content script calls it to resolve a branded link into its real destination.
  */
 export function decodeBranded(fragment: string): { url: string; code: string; key?: string } | null {
   try {

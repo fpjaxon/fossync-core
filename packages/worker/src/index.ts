@@ -1,7 +1,6 @@
 import { RoomDurableObject } from "./room-do";
 import { RoomRegistry } from "./registry-do";
 import { pickLatest, type UpdatesManifest } from "./updates";
-import { decodeBranded } from "@fossync/sync-core";
 
 export { RoomDurableObject, RoomRegistry };
 
@@ -36,15 +35,17 @@ function registry(env: Env): DurableObjectStub {
   return env.REGISTRY.get(env.REGISTRY.idFromName("global"));
 }
 
-// Static "branded" redirect page served at /j. A branded invite encodes the real
-// destination + room code in the URL *fragment* (see @fossync/sync-core/branded),
-// which browsers never put in the HTTP request — so this worker receives only the
-// bare GET /j and learns nothing about where the visitor is going. The page reads
-// the fragment client-side and redirects to `<pageUrl>#vsync=CODE`.
+// Passive landing page served at /j for a branded invite. The real destination,
+// room code, and any encrypted-session key live in the URL *fragment* (see
+// @fossync/sync-core/branded), which browsers never put in the HTTP request — so
+// this worker receives only the bare GET /j and learns nothing about where the
+// visitor is going.
 //
-// `decodeBranded`'s own source is embedded verbatim, so the redirect logic here
-// can never drift from the extension's encoder. It is self-contained and rejects
-// any non-https destination (open-redirect / javascript:-URL guard).
+// The redirect itself is NOT done here: the fossync extension's /j content script
+// reads the fragment and navigates. Resolution lives in the extension on purpose,
+// so the official build only ever follows fossync.cloud/j (its WORKER_ORIGIN) and
+// never a branded link pointing at some other relay. This page is just what a
+// visitor WITHOUT the extension sees — a nudge to install it.
 const JOIN_PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -57,42 +58,20 @@ const JOIN_PAGE = `<!doctype html>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center;
          background: #0e0e12; color: #e7e7ee;
          font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 34rem; padding: 2rem; text-align: center; }
+  main { max-width: 32rem; padding: 2rem; text-align: center; }
   h1 { margin: 0 0 .75rem; font-size: 1.6rem; letter-spacing: -0.02em; }
-  #dest { color: #a9a9b8; word-break: break-all; font-size: 13px; }
-  a { color: #7c9cff; }
-  .err { color: #ffb4a9; }
+  p { color: #a9a9b8; }
+  a.btn { display: inline-block; margin-top: 1rem; padding: .6rem 1.1rem; border-radius: 8px;
+          background: #25925c; color: #eafff2; text-decoration: none; font-weight: 600; }
 </style>
 </head>
 <body>
 <main>
   <h1>fossync</h1>
   <p id="msg">Opening your watch party…</p>
-  <p id="dest"></p>
-  <p id="go" hidden><a id="link" rel="noreferrer">Continue →</a></p>
-  <noscript>This invite opens with JavaScript. The destination is encoded in the
-  link itself and is never sent to fossync.</noscript>
+  <p>This invite opens in the fossync extension. If nothing happens, you don't have it yet:</p>
+  <p><a class="btn" href="/latest.xpi">Get the extension</a></p>
 </main>
-<script>
-var decodeBranded = ${decodeBranded.toString()};
-(function () {
-  var msg = document.getElementById("msg");
-  var dest = document.getElementById("dest");
-  var d = decodeBranded(location.hash);
-  if (!d) {
-    msg.className = "err";
-    msg.textContent = "This invite link is invalid or points somewhere unsafe, so it was not opened.";
-    return;
-  }
-  var target = d.url + "#vsync=" + d.code + (d.key ? "&k=" + d.key : "");
-  dest.textContent = d.url;
-  var link = document.getElementById("link");
-  link.href = target;
-  document.getElementById("go").hidden = false;
-  msg.textContent = "Taking you to:";
-  location.replace(target);
-})();
-</script>
 </body>
 </html>`;
 
@@ -118,13 +97,15 @@ export default {
       return Response.json({ code: genCode() }, { headers: cors });
     }
 
-    // Branded invite redirect. The destination lives in the fragment (never sent
-    // here), so this is a fixed static page; the client-side script does the work.
+    // Branded invite landing page. The destination lives in the fragment (never
+    // sent here); the extension's /j content script reads it and redirects. This
+    // fixed page is only the fallback a visitor without the extension sees.
     if (url.pathname === "/j") {
       return new Response(JOIN_PAGE, {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
-          // Don't leak fossync.cloud as the referrer to the destination site.
+          // The extension redirects from this document; keep fossync.cloud out of
+          // the referrer the destination site receives.
           "Referrer-Policy": "no-referrer",
           "X-Content-Type-Options": "nosniff",
           "Cache-Control": "public, max-age=3600",

@@ -89,9 +89,9 @@
         <button id="useOfficial" class="btn">Use official</button>
       </div>
       <p class="hint">Point fossync at a self-hosted relay (advanced). The official relay is fossync.cloud. A relay you don't run can see your room and your IP and control playback — only connect to relays you trust.</p>
-      <!-- Branded share-links toggle is injected here by main.ts, only in custom
-           builds (FOSSYNC_BRANDED=1). Kept out of static markup so the official
-           build ships none of it. -->
+
+      <label class="toggle"><input id="branded" type="checkbox" /> Branded share links</label>
+      <p class="hint">Share invites as short <code>fossync.cloud/j</code> links instead of the page URL. The destination is encoded in the link itself and never sent to the relay — only the fossync extension opens these links. Off by default.</p>
     </div>
 
     <div id="status"></div>

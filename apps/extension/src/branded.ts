@@ -1,5 +1,6 @@
 import { buildInviteUrl } from "./invite";
 import { encodeBrandedFragment } from "@fossync/sync-core";
+import { WORKER_ORIGIN } from "./config";
 
 // Pure share-link logic (no extension APIs), so it's unit-testable in plain node.
 // The browser-storage side lives in branded-store.ts, mirroring relay-url/relay.
@@ -10,16 +11,17 @@ export const BRANDED_KEY = "brandedUrls";
 /**
  * Build the invite link to SHARE with a guest.
  *
- * When branded links are compiled in (`__BRANDED__`) AND the user has them on,
- * this returns a fragment-redirect link on the *configured* relay
- * (`<relayHttpOrigin>/j#vsync=CODE&u=<encoded pageUrl>`). The destination rides in
- * the fragment, so opening it never sends the page URL to the relay; the relay's
- * /j page redirects client-side.
+ * When the user has branded links on, this returns a short fragment link on THIS
+ * build's relay (`${WORKER_ORIGIN}/j#vsync=CODE&u=<encoded pageUrl>`). The official
+ * build's WORKER_ORIGIN is fossync.cloud, so it only ever produces fossync-branded
+ * links; a self-hosted build (which sets WORKER_ORIGIN in config.ts to its own
+ * relay) produces links on that relay — and its /j content script resolves them.
+ * The destination, room code, and any encrypted-session `key` ride in the fragment,
+ * so opening the link never sends them to the relay; the extension reads the
+ * fragment and redirects (the relay's /j page is a passive install nudge).
  *
- * Otherwise it returns the plain page URL with the code in the hash — today's
- * default, which "defaults to the site they're on". In the official build
- * `__BRANDED__` is false, so the branded branch (and its sync-core import) is
- * dead-code-eliminated and never ships.
+ * Otherwise it returns the plain page URL with the code (+ key) in the hash — the
+ * default, which "defaults to the site they're on".
  *
  * Note: this is the SHARED link only. A host's own tab always stays on the plain
  * page URL (callers pass the branded value to the copy button, not to tabs.update).
@@ -27,12 +29,11 @@ export const BRANDED_KEY = "brandedUrls";
 export function buildShareUrl(
   pageUrl: string,
   code: string,
-  relayHttpOrigin: string,
   brandedOn: boolean,
   key?: string,
 ): string {
-  if (__BRANDED__ && brandedOn) {
-    return `${relayHttpOrigin}/j#${encodeBrandedFragment(pageUrl, code, key)}`;
+  if (brandedOn) {
+    return `${WORKER_ORIGIN}/j#${encodeBrandedFragment(pageUrl, code, key)}`;
   }
   return buildInviteUrl(pageUrl, code, key);
 }
