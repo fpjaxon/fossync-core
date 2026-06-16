@@ -11,6 +11,16 @@ small adapter, so each supported site is simply another adapter.
 fossync Cloud is live at [fossync.cloud](https://fossync.cloud), and the project
 website is at [fossync.com](https://fossync.com).
 
+## Install (Firefox)
+
+fossync is self-distributed: signed by Mozilla but not listed on AMO. Install it in
+Firefox from a single link:
+
+**https://fossync.cloud/latest.xpi** — Firefox will prompt "Add fossync?"; click **Add**.
+
+The add-on persists across restarts and auto-updates itself within a day of each
+release.
+
 ## How it works
 
 A single Cloudflare Durable Object per room holds the authoritative playback state as
@@ -126,6 +136,19 @@ Unit tests cover the sync math. The visual check that two tabs stay locked toget
 5. Play, pause, and seek in one tab. The other tab should follow within a tick, and
    steady-state drift should settle under roughly 250 ms. Small corrections are
    invisible rate nudges; large jumps are seeks.
+
+### Releasing a new version
+
+1. Bump `version` in `apps/extension/package.json`.
+2. Export AMO API credentials (see `apps/extension/.env.example`):
+   ```bash
+   export AMO_JWT_ISSUER=… AMO_JWT_SECRET=…
+   ```
+3. From `apps/extension`, run `pnpm release`.
+
+This builds the extension, signs it unlisted via the AMO API (automated, no review
+queue), and uploads the signed `.xpi` and regenerated `updates.json` to the
+`fossync-builds` R2 bucket. Installed clients pick up the update automatically.
 
 ## Deployment
 

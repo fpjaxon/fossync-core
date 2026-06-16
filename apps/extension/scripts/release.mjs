@@ -7,7 +7,7 @@
 // Floatpoint Cloudflare account (pinned below via CLOUDFLARE_ACCOUNT_ID).
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -28,10 +28,22 @@ function die(msg) {
   process.exit(1);
 }
 
+// Load apps/extension/.env (gitignored) if present, so the AMO_* creds don't need
+// to be exported manually. Real environment variables take precedence over it.
+const envPath = join(extRoot, ".env");
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (m && process.env[m[1]] === undefined) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    }
+  }
+}
+
 const issuer = process.env.AMO_JWT_ISSUER;
 const secret = process.env.AMO_JWT_SECRET;
 if (!issuer || !secret) {
-  die("Set AMO_JWT_ISSUER and AMO_JWT_SECRET (see apps/extension/.env.example).");
+  die("Set AMO_JWT_ISSUER and AMO_JWT_SECRET (in apps/extension/.env or the environment — see .env.example).");
 }
 
 const version = JSON.parse(readFileSync(join(extRoot, "package.json"), "utf8")).version;
