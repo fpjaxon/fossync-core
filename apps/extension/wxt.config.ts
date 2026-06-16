@@ -2,7 +2,7 @@ import { defineConfig } from "wxt";
 
 export default defineConfig({
   manifest: {
-    name: "fossync (dev)",
+    name: "fossync",
     description: "Start a watch party and sync the page's video.",
     // storage: display name. activeTab: read/redirect the active tab on Start Sync.
     // hosts: the deployed worker (fossync.cloud) + harness (fossync.cloud) for injection.
