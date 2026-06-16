@@ -1,5 +1,6 @@
 import { RoomDurableObject } from "./room-do";
 import { RoomRegistry } from "./registry-do";
+import { pickLatest, type UpdatesManifest } from "./updates";
 
 export { RoomDurableObject, RoomRegistry };
 
@@ -54,6 +55,44 @@ export default {
         return Response.json({ error: "at_capacity" }, { status: 503, headers: cors });
       }
       return Response.json({ code: genCode() }, { headers: cors });
+    }
+
+    // --- Self-hosted extension distribution (R2 bucket: fossync-builds) ---
+    // See docs/superpowers/specs/2026-06-15-self-hosted-extension-updates-design.md.
+
+    if (url.pathname === "/updates.json") {
+      const obj = await env.BUILDS.get("updates.json");
+      if (!obj) return new Response("not found", { status: 404 });
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": "application/json",
+          // Short TTL so new releases reach clients quickly.
+          "Cache-Control": "public, max-age=300",
+        },
+      });
+    }
+
+    const xpi = url.pathname.match(/^\/download\/(fossync-\d+\.\d+\.\d+\.xpi)$/);
+    if (xpi) {
+      const obj = await env.BUILDS.get(xpi[1]!);
+      if (!obj) return new Response("not found", { status: 404 });
+      return new Response(obj.body, {
+        headers: {
+          // application/x-xpinstall makes Firefox offer to install rather than
+          // download the file.
+          "Content-Type": "application/x-xpinstall",
+          // Versioned filename never changes — cache hard.
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    }
+
+    if (url.pathname === "/latest.xpi") {
+      const obj = await env.BUILDS.get("updates.json");
+      if (!obj) return new Response("not found", { status: 404 });
+      const link = pickLatest((await obj.json()) as UpdatesManifest);
+      if (!link) return new Response("not found", { status: 404 });
+      return Response.redirect(link, 302);
     }
 
     const m = url.pathname.match(/^\/room\/([A-Za-z0-9]+)$/);
