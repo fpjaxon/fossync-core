@@ -9,3 +9,4 @@ dist/
 .claude/
 # Internal design docs / AI-workflow artifacts — kept locally, not published.
 docs/superpowers/
+apps/extension/.env
