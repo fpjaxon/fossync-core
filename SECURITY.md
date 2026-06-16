@@ -38,13 +38,39 @@ signals only** (play, pause, seek) and never streams, stores, or proxies video.
   session.
 - **Chat and reactions are relayed in real time and never stored.** Display names are
   kept locally and aren't persisted server-side.
-- **Relays are trusted infrastructure.** A relay operator (including a self-hosted or
-  third-party one) can see a room's activity — who's connected, the media being synced,
-  and chat — and your IP address, and can drive playback. The extension flags any
-  non-official relay so you always know where you're connected.
+- **Relays are trusted infrastructure (in a plaintext session).** A relay operator
+  (including a self-hosted or third-party one) can see a room's activity — who's
+  connected, the media being synced, and chat — and your IP address, and can drive
+  playback. The extension flags any non-official relay so you always know where
+  you're connected.
 - **A malicious relay cannot** run code in your browser, redirect you off-site, or read
   your accounts, cookies, or credentials. User-supplied content is rendered with
   `textContent`, and cross-site episode follows are restricted to the same origin.
+
+### Encrypted sessions (end-to-end encryption)
+
+Encrypted sessions are an opt-in mode that removes the relay from the trust model
+for **content**. A random AES-256-GCM key is generated when you start the session
+and travels only in the invite link's URL *fragment* — which browsers never send to
+any server — so the relay never receives it. Chat, reactions, display names, the
+content URL, and playback positions are encrypted client-side; the relay sees only
+opaque, tamper-evident (GCM) blobs. **Even a relay running modified code cannot read
+this content** — the security comes from the open-source client doing the
+encryption, which is why the feature ships in the public build rather than behind a
+closed one.
+
+What encrypted sessions **do not** hide, and other caveats:
+
+- **Metadata** is still visible to the relay: that a room exists, participant count,
+  message types/sizes/timing (traffic analysis can infer pause/seek rhythm), the
+  control-mode setting, when playback events happen and by which opaque id, and — via
+  Cloudflare — IP/transport data.
+- **The key is a capability in the link.** Anyone with the full invite can join and
+  decrypt; it can leak through browser history, sync, screen-sharing the URL, or
+  forwarding. It is not protection against a guest you invited.
+- **No forward secrecy or key rotation** (sessions are ephemeral, so the blast radius
+  is one session), and **all participants must run an E2EE-capable build** — the relay
+  strictly refuses mixing encrypted and plaintext clients in one room.
 
 For the full privacy details, see [PRIVACY.md](./PRIVACY.md). For more about relays and
 self-hosting trade-offs, see [fossync.com](https://fossync.com/#selfhost).

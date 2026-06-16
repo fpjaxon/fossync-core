@@ -8,6 +8,18 @@ describe("branded share-link format", () => {
     expect(decodeBranded(frag)).toEqual({ url, code: "ABC123" });
   });
 
+  it("round-trips an encryption key for an encrypted session", () => {
+    const url = "https://x.test/watch?v=1";
+    const frag = encodeBrandedFragment(url, "ABC123", "thekey_-09");
+    expect(decodeBranded(frag)).toEqual({ url, code: "ABC123", key: "thekey_-09" });
+  });
+
+  it("omits the key for a plaintext session (no k in the fragment)", () => {
+    const frag = encodeBrandedFragment("https://x.test/", "ABC123");
+    expect(frag).not.toContain("k=");
+    expect(decodeBranded(frag)).toEqual({ url: "https://x.test/", code: "ABC123" });
+  });
+
   it("strips any existing hash from the page URL before encoding", () => {
     const frag = encodeBrandedFragment("https://x.test/watch?v=1#vsync=OLD", "NEW999");
     expect(decodeBranded(frag)).toEqual({ url: "https://x.test/watch?v=1", code: "NEW999" });

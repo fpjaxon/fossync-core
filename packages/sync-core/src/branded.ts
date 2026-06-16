@@ -21,6 +21,7 @@
 
 const PARAM_CODE = "vsync";
 const PARAM_URL = "u";
+const PARAM_KEY = "k"; // base64url session key for an encrypted session (optional)
 
 function toBase64Url(s: string): string {
   const bytes = new TextEncoder().encode(s);
@@ -29,12 +30,17 @@ function toBase64Url(s: string): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Encode a destination page URL (any hash stripped) + room code into a /j fragment. */
-export function encodeBrandedFragment(pageUrl: string, code: string): string {
+/**
+ * Encode a destination page URL (any hash stripped) + room code into a /j fragment.
+ * For an encrypted session, pass the base64url session `key`; it travels in the
+ * fragment only, so the relay serving /j never sees it.
+ */
+export function encodeBrandedFragment(pageUrl: string, code: string, key?: string): string {
   const noHash = pageUrl.split("#")[0]!;
   const p = new URLSearchParams();
   p.set(PARAM_CODE, code);
   p.set(PARAM_URL, toBase64Url(noHash));
+  if (key) p.set(PARAM_KEY, key);
   return p.toString();
 }
 
@@ -47,7 +53,7 @@ export function encodeBrandedFragment(pageUrl: string, code: string): string {
  * serves `decodeBranded.toString()` verbatim as the /j page's inline script, so
  * the page and the extension always agree on the format. Keep it dependency-free.
  */
-export function decodeBranded(fragment: string): { url: string; code: string } | null {
+export function decodeBranded(fragment: string): { url: string; code: string; key?: string } | null {
   try {
     const raw = fragment.charAt(0) === "#" ? fragment.slice(1) : fragment;
     const params = new URLSearchParams(raw);
@@ -62,7 +68,8 @@ export function decodeBranded(fragment: string): { url: string; code: string } |
     const decoded = new TextDecoder().decode(bytes);
     const u = new URL(decoded);
     if (u.protocol !== "https:") return null;
-    return { url: u.toString(), code };
+    const key = (params.get("k") || "").trim();
+    return key ? { url: u.toString(), code, key } : { url: u.toString(), code };
   } catch {
     return null;
   }

@@ -346,3 +346,105 @@ describe("RoomDurableObject content sync", () => {
     b.close();
   });
 });
+
+// In an encrypted session the relay must relay opaque blobs verbatim and never see
+// plaintext. Blobs here are arbitrary strings: the relay treats them as opaque.
+describe("RoomDurableObject encrypted sessions", () => {
+  it("welcomes the first encrypted joiner with welcomeEnc + an encrypted snapshot", async () => {
+    const a = await connect("ENC01");
+    send(a, { type: "hello", enc: true, c: "nameblobA" });
+    const welcome = await nextMessage(a, (m) => m.type === "welcomeEnc");
+    if (welcome.type !== "welcomeEnc") throw new Error("bad");
+    expect(welcome.snapshot.hostId).toBe(welcome.youId);
+    expect(welcome.snapshot.encPlayback.blob).toBeNull(); // no control yet
+    expect(welcome.snapshot.participants[0]!.nameBlob).toBe("nameblobA");
+    expect(welcome.snapshot.participants[0]!.name).toBeUndefined(); // no plaintext name
+    a.close();
+  });
+
+  it("relays an encrypted control as encState, stamping anchorServerTime without reading the payload", async () => {
+    const a = await connect("ENC02");
+    send(a, { type: "hello", enc: true, c: "nameA" });
+    await nextMessage(a, (m) => m.type === "welcomeEnc");
+    const b = await connect("ENC02");
+    send(b, { type: "hello", enc: true, c: "nameB" });
+    await nextMessage(b, (m) => m.type === "welcomeEnc");
+
+    const stateP = nextMessage(b, (m) => m.type === "encState");
+    send(a, { type: "control", c: "ctrlblob-play-42" });
+    const state = await stateP;
+    if (state.type !== "encState") throw new Error("bad");
+    expect(state.encPlayback.blob).toBe("ctrlblob-play-42");
+    expect(state.encPlayback.anchorServerTime).toBeGreaterThan(0);
+    a.close();
+    b.close();
+  });
+
+  it("relays encrypted chat + reactions carrying the blob and sender id but no name", async () => {
+    const a = await connect("ENC03");
+    send(a, { type: "hello", enc: true, c: "nameA" });
+    const wa = await nextMessage(a, (m) => m.type === "welcomeEnc");
+    if (wa.type !== "welcomeEnc") throw new Error("bad");
+    const b = await connect("ENC03");
+    send(b, { type: "hello", enc: true, c: "nameB" });
+    await nextMessage(b, (m) => m.type === "welcomeEnc");
+
+    const chatP = nextMessage(b, (m) => m.type === "encChat");
+    send(a, { type: "chat", c: "chatblob" });
+    const chat = await chatP;
+    if (chat.type !== "encChat") throw new Error("bad");
+    expect(chat.c).toBe("chatblob");
+    expect(chat.from.id).toBe(wa.youId);
+    expect(chat.from.name).toBeUndefined();
+
+    const rxP = nextMessage(b, (m) => m.type === "encReaction");
+    send(a, { type: "reaction", c: "rxblob" });
+    const rx = await rxP;
+    if (rx.type !== "encReaction") throw new Error("bad");
+    expect(rx.c).toBe("rxblob");
+    a.close();
+    b.close();
+  });
+
+  it("carries the encrypted content blob in the welcomeEnc snapshot for late joiners", async () => {
+    const a = await connect("ENC04");
+    send(a, { type: "hello", enc: true, c: "nameA" });
+    await nextMessage(a, (m) => m.type === "welcomeEnc");
+    send(a, { type: "setContent", c: "contentblob" });
+    await nextMessage(a, (m) => m.type === "encContent");
+
+    const b = await connect("ENC04");
+    send(b, { type: "hello", enc: true, c: "nameB" });
+    const welcome = await nextMessage(b, (m) => m.type === "welcomeEnc");
+    if (welcome.type !== "welcomeEnc") throw new Error("bad");
+    expect(welcome.snapshot.contentBlob).toBe("contentblob");
+    a.close();
+    b.close();
+  });
+
+  it("refuses a plaintext joiner into an encrypted room (strict all-or-nothing)", async () => {
+    const a = await connect("ENC05");
+    send(a, { type: "hello", enc: true, c: "nameA" });
+    await nextMessage(a, (m) => m.type === "welcomeEnc");
+
+    const b = await connect("ENC05");
+    const errP = nextMessage(b, (m) => m.type === "error");
+    send(b, { type: "hello", name: "Bob" }); // plaintext — must be refused
+    expect((await errP).type).toBe("error");
+    a.close();
+    b.close();
+  });
+
+  it("refuses an encrypted joiner into a plaintext room", async () => {
+    const a = await connect("ENC06");
+    send(a, { type: "hello", name: "Alice" });
+    await nextMessage(a, (m) => m.type === "welcome");
+
+    const b = await connect("ENC06");
+    const errP = nextMessage(b, (m) => m.type === "error");
+    send(b, { type: "hello", enc: true, c: "nameB" }); // encrypted — must be refused
+    expect((await errP).type).toBe("error");
+    a.close();
+    b.close();
+  });
+});

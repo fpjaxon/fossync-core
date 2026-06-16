@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { SyncClient, type SocketLike } from "./sync-client";
 import type { ServerMessage } from "./types";
+import { generateKey, seal, open } from "./e2ee";
 
 class FakeSocket implements SocketLike {
   sent: string[] = [];
@@ -188,8 +189,8 @@ describe("SyncClient", () => {
       { type: "reaction", emoji: "😂" },
     ]);
 
-    let chat: { from: { id: string; name: string }; text: string } | null = null;
-    let reaction: { from: { id: string; name: string }; emoji: string } | null = null;
+    let chat: { from: { id: string; name?: string }; text: string } | null = null;
+    let reaction: { from: { id: string; name?: string }; emoji: string } | null = null;
     client.onChat((m) => (chat = m));
     client.onReaction((m) => (reaction = m));
     socket.serverSend({ type: "chat", from: { id: "u2", name: "Bob" }, text: "hi" });
@@ -212,5 +213,146 @@ describe("SyncClient", () => {
     socket.serverSend({ type: "content", url: "https://www.crunchyroll.com/watch/EP3/y", from: { id: "u2", name: "Bob" } });
     expect(got).toBe("https://www.crunchyroll.com/watch/EP3/y");
     expect(client.getContent()).toBe("https://www.crunchyroll.com/watch/EP3/y");
+  });
+});
+
+// Let the client's async seal/open chains settle (several macrotasks for safety).
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+};
+
+function setupEnc(key: CryptoKey) {
+  const sockets: FakeSocket[] = [];
+  let now = 1000;
+  const client = new SyncClient({
+    url: "ws://x/room/ABC",
+    name: "Tester",
+    pingCount: 1,
+    key,
+    createSocket: () => { const s = new FakeSocket(); sockets.push(s); return s; },
+    now: () => now,
+    schedule: () => 0,
+  });
+  return { sockets, client, latest: () => sockets[sockets.length - 1]! };
+}
+
+describe("SyncClient encrypted sessions", () => {
+  it("sends an encrypted hello (enc + sealed name) instead of a plaintext name", async () => {
+    const key = await generateKey();
+    const { latest, client } = setupEnc(key);
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    await flush();
+    const hello = socket.sentMessages().find((m) => m.type === "hello");
+    expect(hello.enc).toBe(true);
+    expect(hello.name).toBeUndefined();
+    expect(await open(hello.c, key, "name")).toEqual({ name: "Tester" });
+  });
+
+  it("seals outgoing chat, reactions, control and content", async () => {
+    const key = await generateKey();
+    const { latest, client } = setupEnc(key);
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    await flush();
+    socket.sent.length = 0;
+
+    client.sendChat("hi");
+    client.sendReaction("🔥");
+    client.sendControl("play", 12);
+    client.setContent("https://x.test/ep");
+    await flush();
+
+    const sent = socket.sentMessages();
+    const chat = sent.find((m) => m.type === "chat");
+    const rx = sent.find((m) => m.type === "reaction");
+    const ctrl = sent.find((m) => m.type === "control");
+    const content = sent.find((m) => m.type === "setContent");
+    expect(chat.text).toBeUndefined();
+    expect(await open(chat.c, key, "chat")).toEqual({ text: "hi" });
+    expect(await open(rx.c, key, "reaction")).toEqual({ emoji: "🔥" });
+    expect(await open(ctrl.c, key, "control")).toEqual({ action: "play", mediaTime: 12 });
+    expect(await open(content.c, key, "content")).toEqual({ url: "https://x.test/ep" });
+  });
+
+  it("decrypts encState into a playback timeline anchored on the server clock", async () => {
+    const key = await generateKey();
+    const { latest, client } = setupEnc(key);
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    socket.serverSend({
+      type: "welcomeEnc",
+      youId: "me",
+      snapshot: {
+        controlMode: "everyone",
+        hostId: "me",
+        participants: [{ id: "me", role: "host", nameBlob: await seal({ name: "Tester" }, key, "name") }],
+        encPlayback: { blob: null, anchorServerTime: 1000 },
+        contentBlob: null,
+      },
+    });
+    socket.serverSend({
+      type: "encState",
+      controlMode: "everyone",
+      hostId: "me",
+      encPlayback: { blob: await seal({ action: "play", mediaTime: 12 }, key, "control"), anchorServerTime: 2000 },
+    });
+    await flush();
+    expect(client.getPlayback()).toEqual({ paused: false, anchorMediaTime: 12, anchorServerTime: 2000, rate: 1 });
+  });
+
+  it("decrypts encChat and resolves the sender name from the roster", async () => {
+    const key = await generateKey();
+    const { latest, client } = setupEnc(key);
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    socket.serverSend({
+      type: "welcomeEnc",
+      youId: "me",
+      snapshot: {
+        controlMode: "everyone",
+        hostId: "me",
+        participants: [{ id: "u2", role: "host", nameBlob: await seal({ name: "Bob" }, key, "name") }],
+        encPlayback: { blob: null, anchorServerTime: 1000 },
+        contentBlob: null,
+      },
+    });
+    let chat: { from: { id: string; name?: string }; text: string } | null = null;
+    client.onChat((m) => (chat = m));
+    socket.serverSend({ type: "encChat", from: { id: "u2" }, c: await seal({ text: "hi" }, key, "chat") });
+    await flush();
+    expect(chat).toEqual({ from: { id: "u2", name: "Bob" }, text: "hi" });
+  });
+
+  it("surfaces an undecryptable message (wrong key / tampered) without firing the chat callback", async () => {
+    const key = await generateKey();
+    const otherKey = await generateKey();
+    const { latest, client } = setupEnc(key);
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    socket.serverSend({
+      type: "welcomeEnc",
+      youId: "me",
+      snapshot: {
+        controlMode: "everyone",
+        hostId: "me",
+        participants: [],
+        encPlayback: { blob: null, anchorServerTime: 1000 },
+        contentBlob: null,
+      },
+    });
+    let chat: unknown = null;
+    let warned = false;
+    client.onChat((m) => (chat = m));
+    client.onUndecryptable(() => (warned = true));
+    socket.serverSend({ type: "encChat", from: { id: "u2" }, c: await seal({ text: "secret" }, otherKey, "chat") });
+    await flush();
+    expect(chat).toBeNull();
+    expect(warned).toBe(true);
   });
 });

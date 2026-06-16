@@ -127,6 +127,27 @@ browsers and could read the destination they are opening. The official extension
 refuses to point branded links at a relay other than the one you trust, which is
 why the feature is not part of the official build at all.
 
+## Encrypted Sessions
+
+fossync offers an optional **encrypted session** mode (end-to-end encryption). When
+it is enabled, the items listed under "Room data" above — chat messages, reactions,
+display names, the content URL, and playback control events — are encrypted in your
+browser before being sent, and can only be decrypted by the other participants. In
+an encrypted session, fossync Cloud relays only **opaque encrypted data** for these
+fields and cannot read them.
+
+The encryption key is generated in your browser and is shared with guests only
+inside the invite link's *fragment*, which browsers never transmit to any server. As
+a result, fossync Cloud never receives the key and cannot decrypt the content, even
+in principle.
+
+Encrypted sessions do **not** hide certain operational metadata, which the relay
+still necessarily processes: that a room exists, how many participants are connected,
+the size and timing of messages, the room's control-mode setting, and — through
+Cloudflare — connection information such as IP addresses. Anyone who has the full
+invite link can join and decrypt the session, so treat the link as a secret. This
+feature is available in the standard, open-source extension.
+
 ## Planned Features
 
 ### Anonymous accounts

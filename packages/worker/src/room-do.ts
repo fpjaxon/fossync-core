@@ -2,6 +2,8 @@ import type {
   Actor,
   ClientMessage,
   ControlMode,
+  EncryptedPlayback,
+  EncryptedRoomSnapshot,
   Participant,
   Playback,
   RoomSnapshot,
@@ -11,15 +13,19 @@ import type {
 interface Attachment {
   id: string;
   name: string;
+  nameBlob: string; // encrypted display name (encrypted sessions); "" otherwise
   role: "host" | "guest";
   helloed: boolean; // true once the socket has identified itself via `hello`
 }
 
 interface PersistedRoom {
+  encrypted: boolean;
   playback: Playback;
+  encPlayback: EncryptedPlayback;
   controlMode: ControlMode;
   hostId: string | null;
   content: string;
+  contentBlob: string | null;
 }
 
 interface RoomEnv {
@@ -29,34 +35,51 @@ interface RoomEnv {
 const MAX_NAME_LEN = 64;
 const MAX_CHAT_LEN = 500;
 const MAX_EMOJI_LEN = 16; // an emoji can be several code units (skin tone, ZWJ sequences)
+// Encrypted payloads are opaque base64url blobs the relay never reads; a single
+// generous cap covers names, chat, reactions, control and content URLs once sealed.
+const MAX_BLOB_LEN = 8192;
 const CONTROL_ACTIONS = new Set(["play", "pause", "seek"]);
 
 export class RoomDurableObject {
-  private playback: Playback;
+  // An "encrypted session" relays opaque ciphertext blobs for every content-bearing
+  // field; the relay only ever holds blobs + the shared clock, never plaintext. A
+  // room is all-or-nothing: the first `hello`'s `enc` flag decides, and later sockets
+  // that disagree are refused. See docs/superpowers/specs/2026-06-16-encrypted-sessions-design.md.
+  private encrypted = false;
+  private playback: Playback; // plaintext sessions
+  private encPlayback: EncryptedPlayback; // encrypted sessions
   private controlMode: ControlMode = "everyone";
   private hostId: string | null = null;
   private content = ""; // current media URL the room is watching ("" if unset)
+  private contentBlob: string | null = null; // encrypted content URL (encrypted sessions)
   private code: string | null = null; // room code, captured from the request path
 
   constructor(private readonly ctx: DurableObjectState, private readonly env: RoomEnv) {
     this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
+    this.encPlayback = { blob: null, anchorServerTime: Date.now() };
     ctx.blockConcurrencyWhile(async () => {
       const saved = await ctx.storage.get<PersistedRoom>("room");
       if (saved) {
+        this.encrypted = saved.encrypted ?? false;
         this.playback = saved.playback;
+        this.encPlayback = saved.encPlayback ?? { blob: null, anchorServerTime: Date.now() };
         this.controlMode = saved.controlMode;
         this.hostId = saved.hostId;
         this.content = saved.content ?? "";
+        this.contentBlob = saved.contentBlob ?? null;
       }
     });
   }
 
   private async persist(): Promise<void> {
     const room: PersistedRoom = {
+      encrypted: this.encrypted,
       playback: this.playback,
+      encPlayback: this.encPlayback,
       controlMode: this.controlMode,
       hostId: this.hostId,
       content: this.content,
+      contentBlob: this.contentBlob,
     };
     await this.ctx.storage.put("room", room);
   }
@@ -86,7 +109,7 @@ export class RoomDurableObject {
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    const attachment: Attachment = { id: crypto.randomUUID(), name: "", role: "guest", helloed: false };
+    const attachment: Attachment = { id: crypto.randomUUID(), name: "", nameBlob: "", role: "guest", helloed: false };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -101,7 +124,9 @@ export class RoomDurableObject {
   private participants(exclude?: WebSocket): Participant[] {
     return this.helloedSockets(exclude).map((ws) => {
       const a = ws.deserializeAttachment() as Attachment;
-      return { id: a.id, role: a.role, name: a.name };
+      return this.encrypted
+        ? { id: a.id, role: a.role, nameBlob: a.nameBlob }
+        : { id: a.id, role: a.role, name: a.name };
     });
   }
 
@@ -115,6 +140,16 @@ export class RoomDurableObject {
     };
   }
 
+  private encSnapshot(): EncryptedRoomSnapshot {
+    return {
+      controlMode: this.controlMode,
+      hostId: this.hostId ?? "",
+      participants: this.participants(),
+      encPlayback: this.encPlayback,
+      contentBlob: this.contentBlob,
+    };
+  }
+
   private broadcast(msg: ServerMessage, except?: WebSocket): void {
     const s = JSON.stringify(msg);
     for (const ws of this.ctx.getWebSockets()) if (ws !== except) ws.send(s);
@@ -124,14 +159,28 @@ export class RoomDurableObject {
     ws.send(JSON.stringify(msg));
   }
 
-  private stateMessage(actor?: Actor): ServerMessage {
-    return {
-      type: "state",
-      playback: this.playback,
-      controlMode: this.controlMode,
-      hostId: this.hostId ?? "",
-      ...(actor ? { actor } : {}),
-    };
+  /** A `state`/`encState` message reflecting the session's encryption mode. */
+  private buildState(actor?: Actor): ServerMessage {
+    return this.encrypted
+      ? {
+          type: "encState",
+          encPlayback: this.encPlayback,
+          controlMode: this.controlMode,
+          hostId: this.hostId ?? "",
+          ...(actor ? { actor } : {}),
+        }
+      : {
+          type: "state",
+          playback: this.playback,
+          controlMode: this.controlMode,
+          hostId: this.hostId ?? "",
+          ...(actor ? { actor } : {}),
+        };
+  }
+
+  /** The actor descriptor to attach to a broadcast — name omitted in encrypted sessions. */
+  private actorFor(att: Attachment): Actor {
+    return this.encrypted ? { id: att.id } : { id: att.id, name: att.name };
   }
 
   async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
@@ -155,20 +204,46 @@ export class RoomDurableObject {
 
     switch (msg.type) {
       case "hello": {
-        att.name = typeof msg.name === "string" ? msg.name.slice(0, MAX_NAME_LEN) : "Guest";
+        const wantsEnc = msg.enc === true;
+        if (this.hostId === null) {
+          // First participant establishes the room: host + its encryption mode.
+          this.encrypted = wantsEnc;
+        } else if (wantsEnc !== this.encrypted) {
+          // Strict all-or-nothing: a socket whose mode disagrees with the room is
+          // refused so plaintext can never leak into an encrypted session (and vice
+          // versa). The relay needs only this one boolean — never any content.
+          this.send(ws, {
+            type: "error",
+            reason: wantsEnc
+              ? "this session is not encrypted"
+              : "encrypted session — open the full invite link (it carries the key)",
+          });
+          ws.close(1008, "encryption mode mismatch");
+          return;
+        }
+        if (this.encrypted) {
+          att.nameBlob = typeof msg.c === "string" ? msg.c.slice(0, MAX_BLOB_LEN) : "";
+        } else {
+          att.name = typeof msg.name === "string" ? msg.name.slice(0, MAX_NAME_LEN) : "Guest";
+        }
         att.helloed = true;
         if (this.hostId === null) {
           this.hostId = att.id;
           att.role = "host";
-          // Fresh room: anchor at the host's current position (paused) rather than
-          // 0:00, so starting a party doesn't yank the host back to the start.
-          if (typeof msg.mediaTime === "number" && Number.isFinite(msg.mediaTime) && msg.mediaTime > 0) {
+          // Fresh plaintext room: anchor at the host's current position (paused)
+          // rather than 0:00. Encrypted rooms can't read mediaTime, so the host
+          // bootstraps the timeline by sending a control right after the welcome.
+          if (!this.encrypted && typeof msg.mediaTime === "number" && Number.isFinite(msg.mediaTime) && msg.mediaTime > 0) {
             this.playback = { paused: true, anchorMediaTime: msg.mediaTime, anchorServerTime: Date.now(), rate: 1 };
           }
           await this.persist();
         }
         ws.serializeAttachment(att);
-        this.send(ws, { type: "welcome", youId: att.id, snapshot: this.snapshot() });
+        if (this.encrypted) {
+          this.send(ws, { type: "welcomeEnc", youId: att.id, snapshot: this.encSnapshot() });
+        } else {
+          this.send(ws, { type: "welcome", youId: att.id, snapshot: this.snapshot() });
+        }
         this.broadcast({ type: "presence", participants: this.participants() });
         await this.touch("acquire");
         break;
@@ -179,24 +254,38 @@ export class RoomDurableObject {
         break;
       }
       case "control": {
-        if (!CONTROL_ACTIONS.has(msg.action) || !Number.isFinite(msg.mediaTime)) {
-          this.send(ws, { type: "error", reason: "invalid control" });
-          return;
-        }
         if (this.controlMode === "host" && att.id !== this.hostId) {
           this.send(ws, { type: "error", reason: "not authorized to control" });
           return;
         }
         const now = Date.now();
+        if (this.encrypted) {
+          // The relay can't read the action/position; it stamps its own clock as the
+          // shared time reference and stores the opaque blob. Clients decrypt it and
+          // reconstruct the timeline from {action, mediaTime} + this anchor.
+          if (typeof msg.c !== "string" || !msg.c) {
+            this.send(ws, { type: "error", reason: "invalid control" });
+            return;
+          }
+          this.encPlayback = { blob: msg.c.slice(0, MAX_BLOB_LEN), anchorServerTime: now };
+          await this.persist();
+          this.broadcast(this.buildState(this.actorFor(att)));
+          break;
+        }
+        if (!msg.action || !CONTROL_ACTIONS.has(msg.action) || !Number.isFinite(msg.mediaTime)) {
+          this.send(ws, { type: "error", reason: "invalid control" });
+          return;
+        }
+        const mediaTime = msg.mediaTime as number;
         if (msg.action === "pause") {
-          this.playback = { ...this.playback, paused: true, anchorMediaTime: msg.mediaTime, anchorServerTime: now };
+          this.playback = { ...this.playback, paused: true, anchorMediaTime: mediaTime, anchorServerTime: now };
         } else if (msg.action === "play") {
-          this.playback = { ...this.playback, paused: false, anchorMediaTime: msg.mediaTime, anchorServerTime: now };
+          this.playback = { ...this.playback, paused: false, anchorMediaTime: mediaTime, anchorServerTime: now };
         } else {
-          this.playback = { ...this.playback, anchorMediaTime: msg.mediaTime, anchorServerTime: now };
+          this.playback = { ...this.playback, anchorMediaTime: mediaTime, anchorServerTime: now };
         }
         await this.persist();
-        this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
+        this.broadcast(this.buildState(this.actorFor(att)));
         break;
       }
       case "setMode": {
@@ -210,13 +299,25 @@ export class RoomDurableObject {
         }
         this.controlMode = msg.mode;
         await this.persist();
-        this.broadcast(this.stateMessage({ id: att.id, name: att.name }));
+        this.broadcast(this.buildState(this.actorFor(att)));
         break;
       }
       case "setContent": {
         if (this.controlMode === "host" && att.id !== this.hostId) {
           this.send(ws, { type: "error", reason: "not authorized to control" });
           return;
+        }
+        if (this.encrypted) {
+          // The relay can't read or validate the URL (that moves client-side) and
+          // can't dedupe ciphertext, so it just stores/forwards the blob. Switching
+          // content resets the timeline; the relay clears the anchor to "unknown".
+          if (typeof msg.c !== "string" || !msg.c) return;
+          this.contentBlob = msg.c.slice(0, MAX_BLOB_LEN);
+          this.encPlayback = { blob: null, anchorServerTime: Date.now() };
+          await this.persist();
+          this.broadcast({ type: "encContent", blob: this.contentBlob, from: this.actorFor(att) });
+          this.broadcast(this.buildState());
+          break;
         }
         let url: string;
         try {
@@ -231,21 +332,31 @@ export class RoomDurableObject {
         // Switching episodes resets the timeline to the start (paused).
         this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
         await this.persist();
-        this.broadcast({ type: "content", url, from: { id: att.id, name: att.name } });
-        this.broadcast(this.stateMessage());
+        this.broadcast({ type: "content", url, from: this.actorFor(att) });
+        this.broadcast(this.buildState());
         break;
       }
       case "chat": {
         // Relayed in real time to everyone (incl. sender); never stored.
+        if (this.encrypted) {
+          if (typeof msg.c !== "string" || !msg.c) return;
+          this.broadcast({ type: "encChat", from: this.actorFor(att), c: msg.c.slice(0, MAX_BLOB_LEN) });
+          break;
+        }
         const text = typeof msg.text === "string" ? msg.text.trim().slice(0, MAX_CHAT_LEN) : "";
         if (!text) return;
-        this.broadcast({ type: "chat", from: { id: att.id, name: att.name }, text });
+        this.broadcast({ type: "chat", from: this.actorFor(att), text });
         break;
       }
       case "reaction": {
+        if (this.encrypted) {
+          if (typeof msg.c !== "string" || !msg.c) return;
+          this.broadcast({ type: "encReaction", from: this.actorFor(att), c: msg.c.slice(0, MAX_BLOB_LEN) });
+          break;
+        }
         const emoji = typeof msg.emoji === "string" ? msg.emoji.slice(0, MAX_EMOJI_LEN) : "";
         if (!emoji) return;
-        this.broadcast({ type: "reaction", from: { id: att.id, name: att.name }, emoji });
+        this.broadcast({ type: "reaction", from: this.actorFor(att), emoji });
         break;
       }
       case "bye": {
@@ -281,7 +392,7 @@ export class RoomDurableObject {
         this.hostId = null;
       }
       await this.persist();
-      this.broadcast(this.stateMessage(), ws);
+      this.broadcast(this.buildState(), ws);
     }
 
     this.broadcast({ type: "presence", participants: this.participants(ws) }, ws);
@@ -291,10 +402,13 @@ export class RoomDurableObject {
     // persisted record (and reset in-memory state in case this instance is reused).
     if (this.ctx.getWebSockets().filter((s) => s !== ws).length === 0) {
       await this.ctx.storage.deleteAll();
+      this.encrypted = false;
       this.playback = { paused: true, anchorMediaTime: 0, anchorServerTime: Date.now(), rate: 1 };
+      this.encPlayback = { blob: null, anchorServerTime: Date.now() };
       this.controlMode = "everyone";
       this.hostId = null;
       this.content = "";
+      this.contentBlob = null;
       await this.touch("release");
     }
   }

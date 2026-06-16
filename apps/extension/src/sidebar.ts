@@ -39,6 +39,10 @@ export interface Sidebar {
   setVideo(video: HTMLVideoElement | null): void;
   /** Show a persistent banner that the room is on a non-official (third-party) relay. */
   showRelayWarning(origin: string): void;
+  /** Toggle the encrypted-session lock badge in the header. */
+  setEncrypted(on: boolean): void;
+  /** Show a persistent security banner (missing key / undecryptable / tampered messages). */
+  showSecurityWarning(message: string): void;
   /** Prompt for the one user gesture browsers require before programmatic play. */
   showPlayGate(onPlay: () => void): void;
   hidePlayGate(): void;
@@ -101,16 +105,24 @@ export function createSidebar(): Sidebar {
 
   const header = el("div", `display:flex;align-items:center;gap:8px;padding:11px 12px;border-bottom:1px solid ${C.border};`);
   const roomLabel = el("div", `flex:1;font:${MONO};color:${C.muted};`, "");
+  // Lock badge shown only in an encrypted session (set via setEncrypted).
+  const lock = el("span", `display:none;font:${MONO};color:${C.green};`, "🔒 e2ee");
+  lock.title = "Encrypted session — the relay can't read chat, names, what you're watching, or playback.";
   const collapseBtn = el("button", btnCss("transparent", C.muted) + ";padding:2px 8px;font-size:16px;", "→");
   collapseBtn.title = "Collapse";
   collapseBtn.addEventListener("click", () => setCollapsed(true));
-  header.append(el("div", "font-weight:700;color:#fff;", "◆ fossync"), roomLabel, collapseBtn);
+  header.append(el("div", "font-weight:700;color:#fff;", "◆ fossync"), roomLabel, lock, collapseBtn);
 
   const status = el("div", `padding:7px 12px;font:${MONO};color:${C.green};border-bottom:1px solid ${C.border};`, "connecting…");
 
   const relayWarning = el("div",
     "display:none;margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:#3a2c00;" +
     `color:${C.warn};border:1px solid #6b5300;font:${MONO};line-height:1.45;`, "");
+
+  // Security banner for encryption problems (missing key, undecryptable / tampered messages).
+  const securityWarning = el("div",
+    "display:none;margin:8px 12px 0;padding:8px 10px;border-radius:8px;background:#2a1416;" +
+    `color:${C.danger};border:1px solid #5b2327;font:${MONO};line-height:1.45;`, "");
 
   const watching = el("div", "padding:3px 12px 8px;display:flex;flex-direction:column;gap:4px;max-height:22%;overflow-y:auto;");
   const feed = el("div", "flex:1;min-height:96px;overflow-y:auto;padding:3px 12px 8px;display:flex;flex-direction:column;gap:4px;");
@@ -165,7 +177,7 @@ export function createSidebar(): Sidebar {
     "▶  Click to watch in sync");
   playGate.addEventListener("click", () => { const cb = gatePlayCb; hidePlayGate(); cb?.(); });
 
-  panel.append(header, status, relayWarning, sectionHead("WATCHING"), watching, sectionHead("FEED"), feed, reactionsBar, chatRow, footer);
+  panel.append(header, status, relayWarning, securityWarning, sectionHead("WATCHING"), watching, sectionHead("FEED"), feed, reactionsBar, chatRow, footer);
   root.append(reactionLayer.element, chatToasts.element, sphere, panel, playGate);
   document.documentElement.appendChild(root);
 
@@ -217,13 +229,18 @@ export function createSidebar(): Sidebar {
         "and your IP, and can control playback. Only connect to relays you trust.";
       relayWarning.style.display = "block";
     },
+    setEncrypted: (on) => { lock.style.display = on ? "inline" : "none"; },
+    showSecurityWarning: (message) => {
+      securityWarning.textContent = "🔒 " + message;
+      securityWarning.style.display = "block";
+    },
     setParticipants: (list, you, hostId) => {
       youId = you;
       watching.replaceChildren();
       for (const p of list) {
         const row = el("div", "display:flex;align-items:center;gap:6px;");
         row.append(el("span", `color:${C.green};font-size:10px;`, "●"));
-        row.append(el("span", `color:${C.text};`, p.name));
+        row.append(el("span", `color:${C.text};`, p.name ?? "…"));
         if (p.id === hostId) row.append(el("span", `font:${MONO};color:${C.warn};`, "host"));
         if (p.id === you) row.append(el("span", `font:${MONO};color:${C.muted};`, "· you"));
         watching.append(row);
@@ -234,12 +251,12 @@ export function createSidebar(): Sidebar {
     },
     addChat: ({ from, text }) => {
       const row = el("div", `color:${C.text};word-break:break-word;`);
-      row.append(el("span", `color:${C.blue};font-weight:600;`, (from.id === youId ? "You" : from.name) + ": "));
+      row.append(el("span", `color:${C.blue};font-weight:600;`, (from.id === youId ? "You" : from.name ?? "Someone") + ": "));
       row.append(el("span", "", text)); // textContent — never interpret message HTML
       pushFeed(row);
       // When collapsed, someone else's message surfaces as a toast + sphere cue.
       if (collapsed && from.id !== youId) {
-        chatToasts.push(from.name, text);
+        chatToasts.push(from.name ?? "Someone", text);
         pulse("chat");
         unreadDot.style.display = "block";
       }

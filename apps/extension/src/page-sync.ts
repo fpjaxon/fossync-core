@@ -1,8 +1,8 @@
-import { SyncClient, SyncSession, Html5VideoAdapter } from "@fossync/sync-core";
+import { SyncClient, SyncSession, Html5VideoAdapter, importKeyB64 } from "@fossync/sync-core";
 import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
 import { getRelay } from "./relay";
-import { parseRoomCode, removeInvite, buildInviteUrl } from "./invite";
+import { parseInvite, removeInvite, buildInviteUrl } from "./invite";
 import { buildShareUrl } from "./branded";
 import { getBrandedUrls } from "./branded-store";
 import { randomName } from "./name-gen";
@@ -31,6 +31,9 @@ export function startPageSync(site: SiteModule): void {
   let stopAds: (() => void) | null = null;
   let stopNav: (() => void) | null = null;
   let currentCode: string | null = null;
+  // Encrypted session: the base64url key from the share-link fragment (null = plaintext).
+  // Threaded back into every invite/share link we rebuild so the key never gets dropped.
+  let currentKeyB64: string | null = null;
   // Relay origin + branded preference, captured on connect so the invite link
   // (which may be rebuilt on episode change) doesn't need to re-read them.
   let relayHttpOrigin = "";
@@ -102,15 +105,32 @@ export function startPageSync(site: SiteModule): void {
   // Leaving = drop the room code from the URL; the page goes back to plain content.
   function leaveRoom(): void {
     currentCode = null;
+    currentKeyB64 = null;
     teardown();
     history.replaceState(null, "", removeInvite(window.location.href));
     sidebar.hide();
   }
 
-  async function connectTo(code: string): Promise<void> {
+  async function connectTo(code: string, keyB64: string | null): Promise<void> {
     teardown();
     const gen = generation;
     currentCode = code;
+    currentKeyB64 = keyB64;
+    // Import the session key (encrypted session). A malformed key disables sync
+    // rather than silently falling back to plaintext — see the security banner below.
+    let cryptoKey: CryptoKey | undefined;
+    if (keyB64) {
+      try {
+        cryptoKey = await importKeyB64(keyB64);
+      } catch {
+        sidebar.setRoom(code);
+        sidebar.setEncrypted(true);
+        sidebar.showSecurityWarning("This encrypted invite link is malformed (bad key). Ask for a fresh link.");
+        sidebar.show();
+        return;
+      }
+    }
+    if (gen !== generation) return; // superseded
     const relay = await getRelay();
     if (gen !== generation) return; // superseded
     relayHttpOrigin = relay.httpOrigin;
@@ -119,7 +139,8 @@ export function startPageSync(site: SiteModule): void {
     console.log("[fossync] connecting to room", code, "via", roomSocketUrl(relay.wsOrigin, code));
     if (!relay.isOfficial) sidebar.showRelayWarning(relay.wsOrigin);
     sidebar.setRoom(code);
-    sidebar.setInvite(buildShareUrl(cleanUrl(window.location.href), code, relayHttpOrigin, brandedOn));
+    sidebar.setEncrypted(!!cryptoKey);
+    sidebar.setInvite(buildShareUrl(cleanUrl(window.location.href), code, relayHttpOrigin, brandedOn, currentKeyB64 ?? undefined));
     sidebar.setStatus("● looking for video…");
     sidebar.show();
     const video = await site.findVideo();
@@ -139,8 +160,17 @@ export function startPageSync(site: SiteModule): void {
       now: () => Date.now(),
       schedule: (fn, ms) => window.setTimeout(fn, ms),
       getMediaTime: () => currentVideo?.currentTime ?? 0,
+      key: cryptoKey,
     });
-    client.onError((reason) => console.warn("[fossync] server error:", reason));
+    client.onError((reason) => {
+      console.warn("[fossync] server error:", reason);
+      // The relay refuses encryption-mode mismatches (e.g. joining an encrypted
+      // room without the key, or vice versa). Surface that to the user.
+      if (/encrypt/i.test(reason)) sidebar.showSecurityWarning(reason);
+    });
+    client.onUndecryptable(() =>
+      sidebar.showSecurityWarning("Some messages couldn't be decrypted — a participant may be on a different key, or the relay altered data."),
+    );
     client.onChat((m) => sidebar.addChat(m));
     client.onReaction((m) => sidebar.showReaction(m.emoji));
     client.onContent((url) => followContent(url));
@@ -155,9 +185,9 @@ export function startPageSync(site: SiteModule): void {
   function onLocalNav(url: string): void {
     if (!currentCode || !client) return;
     const clean = cleanUrl(url);
-    const withCode = buildInviteUrl(clean, currentCode);
-    if (window.location.href !== withCode) history.replaceState(null, "", withCode); // re-add the room code Crunchyroll dropped
-    sidebar.setInvite(buildShareUrl(clean, currentCode, relayHttpOrigin, brandedOn));
+    const withCode = buildInviteUrl(clean, currentCode, currentKeyB64 ?? undefined);
+    if (window.location.href !== withCode) history.replaceState(null, "", withCode); // re-add the room code (+ key) Crunchyroll dropped
+    sidebar.setInvite(buildShareUrl(clean, currentCode, relayHttpOrigin, brandedOn, currentKeyB64 ?? undefined));
     client.setContent(clean); // server gates by control mode + resets the timeline
     detachVideo();
     void reattach(generation);
@@ -182,7 +212,7 @@ export function startPageSync(site: SiteModule): void {
     }
     if (target.origin !== window.location.origin) return; // never navigate off-site
     if (target.pathname === window.location.pathname) return; // already on this content
-    window.location.assign(buildInviteUrl(cleanUrl(url), currentCode));
+    window.location.assign(buildInviteUrl(cleanUrl(url), currentCode, currentKeyB64 ?? undefined));
   }
 
   function tick(): void {
@@ -212,11 +242,12 @@ export function startPageSync(site: SiteModule): void {
   }
 
   function handleHash(): void {
-    const code = parseRoomCode(window.location.hash);
-    if (code) {
-      if (code !== currentCode) void connectTo(code);
+    const invite = parseInvite(window.location.hash);
+    if (invite) {
+      if (invite.code !== currentCode) void connectTo(invite.code, invite.key);
     } else {
       currentCode = null;
+      currentKeyB64 = null;
       teardown();
       sidebar.hide();
     }

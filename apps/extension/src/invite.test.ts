@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildInviteUrl, parseRoomCode, removeInvite, INVITE_PARAM } from "./invite";
+import { buildInviteUrl, parseRoomCode, parseInvite, removeInvite, INVITE_PARAM } from "./invite";
 
 describe("buildInviteUrl", () => {
   it("appends #vsync=CODE to a plain page URL", () => {
@@ -10,6 +10,27 @@ describe("buildInviteUrl", () => {
     expect(buildInviteUrl("http://localhost:5173/?room=X#vsync=OLD", "NEW")).toBe(
       "http://localhost:5173/?room=X#vsync=NEW",
     );
+  });
+
+  it("appends &k=KEY when an encryption key is given (encrypted session)", () => {
+    expect(buildInviteUrl("http://localhost:5173/", "ABC123", "thekey_-09")).toBe(
+      "http://localhost:5173/#vsync=ABC123&k=thekey_-09",
+    );
+  });
+});
+
+describe("parseInvite", () => {
+  it("returns code and key from an encrypted invite", () => {
+    expect(parseInvite("#vsync=ABC123&k=thekey_-09")).toEqual({ code: "ABC123", key: "thekey_-09" });
+  });
+
+  it("returns a null key for a plaintext invite", () => {
+    expect(parseInvite("#vsync=ABC123")).toEqual({ code: "ABC123", key: null });
+  });
+
+  it("returns null when there is no code", () => {
+    expect(parseInvite("#k=thekey_-09")).toBeNull();
+    expect(parseInvite("")).toBeNull();
   });
 });
 
@@ -43,5 +64,9 @@ describe("removeInvite", () => {
 
   it("returns the url unchanged when there is no hash (idempotent)", () => {
     expect(removeInvite("http://localhost:5173/")).toBe("http://localhost:5173/");
+  });
+
+  it("also strips the encryption key, so it never lingers in the URL bar/history", () => {
+    expect(removeInvite("http://localhost:5173/#vsync=ABC&k=thekey_-09")).toBe("http://localhost:5173/");
   });
 });

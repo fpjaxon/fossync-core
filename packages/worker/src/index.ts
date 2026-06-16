@@ -84,7 +84,7 @@ var decodeBranded = ${decodeBranded.toString()};
     msg.textContent = "This invite link is invalid or points somewhere unsafe, so it was not opened.";
     return;
   }
-  var target = d.url + "#vsync=" + d.code;
+  var target = d.url + "#vsync=" + d.code + (d.key ? "&k=" + d.key : "");
   dest.textContent = d.url;
   var link = document.getElementById("link");
   link.href = target;

@@ -1,4 +1,5 @@
 import { browser } from "wxt/browser";
+import { generateKey, exportKeyB64 } from "@fossync/sync-core";
 import { HARNESS_ORIGIN } from "../../src/config";
 import { newRoomUrl } from "../../src/urls";
 import { buildInviteUrl, parseRoomCode, removeInvite } from "../../src/invite";
@@ -8,9 +9,11 @@ import { localNameStorage } from "../../src/storage";
 import { isSupportedContentUrl } from "../../src/supported";
 import { getRelay, setRelayOrigin, resetRelay, normalizeRelayUrl } from "../../src/relay";
 import { getBrandedUrls, setBrandedUrls } from "../../src/branded-store";
+import { getEncryptedDefault, setEncryptedDefault } from "../../src/encrypted-store";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const nameInput = $("name") as HTMLInputElement;
+const encryptedToggle = $("encrypted") as HTMLInputElement;
 const relayInput = $("relay") as HTMLInputElement;
 const mainView = $("main");
 const settingsView = $("settings");
@@ -96,6 +99,10 @@ async function initName(): Promise<void> {
   nameInput.value = currentName;
 }
 
+encryptedToggle.addEventListener("change", () => {
+  void setEncryptedDefault(encryptedToggle.checked).catch((e) => console.warn("save encrypted pref failed:", e));
+});
+
 nameInput.addEventListener("change", () => {
   const v = nameInput.value.trim();
   if (v) {
@@ -133,7 +140,11 @@ $("startSync").addEventListener("click", async () => {
       setStatus("couldn't start (bad response)");
       return;
     }
-    const invite = buildInviteUrl(tab.url, body.code);
+    // Encrypted session: mint a fresh key and carry it in the invite fragment only.
+    // It never reaches the relay (fragments aren't sent in requests), and page-sync
+    // reads it from the hash the same way a guest's browser does.
+    const keyB64 = encryptedToggle.checked ? await exportKeyB64(await generateKey()) : undefined;
+    const invite = buildInviteUrl(tab.url, body.code, keyB64);
     await browser.tabs.update(tab.id, { url: invite });
     showSynced(body.code);
     setStatus("synced — manage from the page panel");
@@ -201,5 +212,14 @@ if (__BRANDED__) {
   });
 }
 
+async function initEncryptedToggle(): Promise<void> {
+  try {
+    encryptedToggle.checked = await getEncryptedDefault();
+  } catch {
+    encryptedToggle.checked = false;
+  }
+}
+
 void initName();
+void initEncryptedToggle();
 void renderMain();

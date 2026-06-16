@@ -29,9 +29,10 @@ export function buildShareUrl(
   code: string,
   relayHttpOrigin: string,
   brandedOn: boolean,
+  key?: string,
 ): string {
   if (__BRANDED__ && brandedOn) {
-    return `${relayHttpOrigin}/j#${encodeBrandedFragment(pageUrl, code)}`;
+    return `${relayHttpOrigin}/j#${encodeBrandedFragment(pageUrl, code, key)}`;
   }
-  return buildInviteUrl(pageUrl, code);
+  return buildInviteUrl(pageUrl, code, key);
 }

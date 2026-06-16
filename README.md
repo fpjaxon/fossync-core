@@ -81,6 +81,13 @@ The extension is the control surface for a watch party:
   joiner starts playing in sync.
 - The engine supports two control modes, anyone-can-control and host-only, and
   transfers host status automatically when the host leaves.
+- An optional **encrypted session** toggle turns on end-to-end encryption: chat,
+  reactions, names, the content URL, and playback are encrypted client-side so the
+  relay only ever relays opaque blobs and can't read them. A random key is minted at
+  start and carried in the invite link's fragment (`…#vsync=CODE&k=…`), which
+  browsers never send to a server — so even a relay running modified code can't read
+  the content. It trades away history/forward secrecy and leaks some metadata
+  (timing, participant count); see [SECURITY.md](./SECURITY.md) for the threat model.
 
 ## Self-hosting and custom relays
 
