@@ -92,6 +92,8 @@ export default {
       if (!obj) return new Response("not found", { status: 404 });
       const link = pickLatest((await obj.json()) as UpdatesManifest);
       if (!link) return new Response("not found", { status: 404 });
+      // update_link is operator-supplied via the R2 manifest (written by our
+      // release script) — not user input, so no scheme/origin check is needed.
       return Response.redirect(link, 302);
     }
 

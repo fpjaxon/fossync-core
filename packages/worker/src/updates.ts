@@ -15,7 +15,9 @@ export interface UpdatesManifest {
 
 /**
  * Compare dotted numeric versions (MAJOR.MINOR.PATCH). No pre-release handling
- * (YAGNI). Keep in sync with apps/extension/scripts/updates.mjs.
+ * (YAGNI). Segments are assumed numeric (versions originate from package.json);
+ * non-numeric input yields undefined ordering. Keep in sync with
+ * apps/extension/scripts/updates.mjs.
  */
 export function compareVersions(a: string, b: string): number {
   const pa = a.split(".").map(Number);
@@ -27,7 +29,7 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-/** The download link of the highest-version entry, or null if there are none. */
+/** The download link of the highest-version entry for ADDON_ID, or null if there are none. */
 export function pickLatest(manifest: UpdatesManifest): string | null {
   const updates = manifest.addons?.[ADDON_ID]?.updates ?? [];
   let best: UpdateEntry | null = null;

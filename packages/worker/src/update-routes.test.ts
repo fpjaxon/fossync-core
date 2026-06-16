@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { SELF, env } from "cloudflare:test";
+import { ADDON_ID } from "./updates";
 
 const builds = (env as unknown as { BUILDS: R2Bucket }).BUILDS;
 
 const MANIFEST = {
   addons: {
-    "fossync@floatpoint.net": {
+    [ADDON_ID]: {
       updates: [
         {
           version: "0.0.7",
@@ -28,12 +29,17 @@ describe("update routes", () => {
     await builds.put("fossync-0.0.8.xpi", "fake-xpi-bytes");
   });
 
+  afterAll(async () => {
+    await builds.delete("updates.json");
+    await builds.delete("fossync-0.0.8.xpi");
+  });
+
   it("serves updates.json as application/json", async () => {
     const res = await SELF.fetch("https://fossync.cloud/updates.json");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     const body = (await res.json()) as typeof MANIFEST;
-    expect(body.addons["fossync@floatpoint.net"].updates).toHaveLength(2);
+    expect(body.addons[ADDON_ID].updates).toHaveLength(2);
   });
 
   it("serves a versioned .xpi as application/x-xpinstall", async () => {
