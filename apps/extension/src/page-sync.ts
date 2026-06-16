@@ -1,4 +1,4 @@
-import { SyncClient, SyncSession, Html5VideoAdapter, importKeyB64 } from "@fossync/sync-core";
+import { SyncClient, SyncSession, Html5VideoAdapter, importKeyB64, classifyConnection } from "@fossync/sync-core";
 import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
 import { getRelay } from "./relay";
@@ -215,6 +215,8 @@ export function startPageSync(site: SiteModule): void {
 
   function tick(): void {
     if (!client) return;
+    const rtt = client.getConnectionRtt();
+    sidebar.setConnectionQuality(classifyConnection(rtt), rtt);
     const youId = client.getYouId();
     const hostId = client.getHostId();
     const participants = client.getParticipants();

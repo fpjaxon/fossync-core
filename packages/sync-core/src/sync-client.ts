@@ -60,6 +60,10 @@ export class SyncClient {
   private participants: Participant[] = [];
   private actor: Actor | null = null;
   private samples: PingSample[] = [];
+  // Running min RTT (ms) of the current clock-sync burst; null until the first pong.
+  // Written only on `pong`, so it persists across the brief sample-reset gap at each
+  // 30s resync (the quality icon doesn't flicker to "measuring"); reset on connect().
+  private connectionRtt: number | null = null;
   private reconnectMs = BASE_RECONNECT_MS;
   private errorCb: ((reason: string) => void) | null = null;
   private chatCb: ((msg: { from: Actor; text: string }) => void) | null = null;
@@ -84,6 +88,7 @@ export class SyncClient {
     this.epoch++;
     this.intentionalClose = false;
     this.samples = [];
+    this.connectionRtt = null; // a fresh/reconnected socket shows "measuring" until new pongs
     const socket = this.opts.createSocket(this.opts.url);
     this.socket = socket;
     socket.addEventListener("open", () => this.onOpen());
@@ -151,6 +156,7 @@ export class SyncClient {
       case "pong":
         this.samples.push(computeSample(msg.t0, msg.t1, this.opts.now()));
         this.offset = pickBestOffset(this.samples);
+        this.connectionRtt = Math.min(...this.samples.map((s) => s.rtt));
         break;
       case "state":
         this.applySnapshot(msg.controlMode, msg.hostId, msg.playback);
@@ -322,6 +328,8 @@ export class SyncClient {
   // ---- public reads / commands ----
   getYouId(): string | null { return this.youId; }
   getOffset(): number | null { return this.offset; }
+  /** Best (min) round-trip time to the relay (ms) for the current burst; null until measured. */
+  getConnectionRtt(): number | null { return this.connectionRtt; }
   getPlayback(): Playback | null { return this.playback; }
   getControlMode(): ControlMode | null { return this.controlMode; }
   getHostId(): string | null { return this.hostId; }

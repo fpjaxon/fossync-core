@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./branded";
+export * from "./connection";
 export * from "./e2ee";
 export * from "./clock";
 export * from "./reconciler";

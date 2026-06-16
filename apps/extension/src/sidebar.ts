@@ -1,5 +1,6 @@
-import type { Actor, Participant } from "@fossync/sync-core";
+import type { Actor, Participant, ConnectionQuality } from "@fossync/sync-core";
 import type { ActivityEvent } from "./activity";
+import { qualityToIcon, type QualityIcon } from "./connection-quality";
 import { C, FONT, MONO } from "./theme";
 import { REACTIONS } from "./emoji-assets";
 import { createReactionLayer } from "./reaction-layer";
@@ -26,6 +27,39 @@ function flash(btn: HTMLElement, text: string): void {
   window.setTimeout(() => { btn.textContent = orig; }, 1200);
 }
 
+// Connection-quality signal bars: three ascending vertical bars. The first
+// `icon.bars` are filled with the tier color; the rest stay a faint track. While
+// measuring, the whole glyph gets a gentle looping opacity pulse.
+const BAR_HEIGHTS = ["5px", "9px", "13px"];
+const pulses = new WeakMap<HTMLElement, Animation>();
+
+function makeBars(): HTMLElement {
+  const host = el("span", "display:inline-flex;align-items:flex-end;gap:2px;height:13px;flex:none;");
+  for (const h of BAR_HEIGHTS) {
+    host.append(el("span", `width:3px;height:${h};border-radius:1px;background:${C.faint};transition:background .25s ease;`));
+  }
+  return host;
+}
+
+function renderBars(host: HTMLElement, icon: QualityIcon, baseOpacity: number): void {
+  const kids = host.children;
+  for (let i = 0; i < kids.length; i++) {
+    (kids[i] as HTMLElement).style.background = i < icon.bars ? icon.color : C.faint;
+  }
+  host.style.opacity = String(baseOpacity);
+  const running = pulses.get(host);
+  if (icon.pulse && !running) {
+    const anim = host.animate(
+      [{ opacity: baseOpacity * 0.35 }, { opacity: baseOpacity }, { opacity: baseOpacity * 0.35 }],
+      { duration: 1400, iterations: Infinity, easing: "ease-in-out" },
+    );
+    pulses.set(host, anim);
+  } else if (!icon.pulse && running) {
+    running.cancel();
+    pulses.delete(host);
+  }
+}
+
 export interface Sidebar {
   show(): void;
   hide(): void;
@@ -36,6 +70,8 @@ export interface Sidebar {
   addChat(msg: { from: Actor; text: string }): void;
   showReaction(emoji: string): void;
   setInvite(url: string): void;
+  /** Update the local connection-quality indicator (header + collapsed sphere). */
+  setConnectionQuality(quality: ConnectionQuality, rttMs: number | null): void;
   setVideo(video: HTMLVideoElement | null): void;
   /** Show a persistent banner that the room is on a non-official (third-party) relay. */
   showRelayWarning(origin: string): void;
@@ -86,7 +122,10 @@ export function createSidebar(): Sidebar {
   const unreadDot = el("span",
     `position:absolute;top:-1px;right:-1px;width:7px;height:7px;border-radius:50%;background:${C.blue};` +
     "border:1.5px solid #0c0c0f;display:none;");
-  sphere.append(ring, unreadDot);
+  const sphereBars = makeBars();
+  sphereBars.style.cssText +=
+    "position:absolute;bottom:3px;left:50%;transform:translateX(-50%) scale(.62);transform-origin:bottom center;pointer-events:none;";
+  sphere.append(ring, unreadDot, sphereBars);
   sphere.addEventListener("mouseenter", () => { sphere.style.transform = "scale(1.08)"; sphere.style.borderColor = C.green; });
   sphere.addEventListener("mouseleave", () => { sphere.style.transform = "scale(1)"; sphere.style.borderColor = "rgba(61,220,132,.35)"; });
   sphere.addEventListener("click", () => setCollapsed(false));
@@ -111,7 +150,13 @@ export function createSidebar(): Sidebar {
   const collapseBtn = el("button", btnCss("transparent", C.muted) + ";padding:2px 8px;font-size:16px;", "→");
   collapseBtn.title = "Collapse";
   collapseBtn.addEventListener("click", () => setCollapsed(true));
-  header.append(el("div", "font-weight:700;color:#fff;", "◆ fossync"), roomLabel, lock, collapseBtn);
+  const title = el("div", "font-weight:700;color:#fff;", "◆ fossync");
+  const headerBars = makeBars();
+  header.append(title, headerBars, roomLabel, lock, collapseBtn);
+
+  // Start in the "measuring" state until the first pong resolves a tier.
+  renderBars(headerBars, qualityToIcon("measuring"), 1);
+  renderBars(sphereBars, qualityToIcon("measuring"), 0.5);
 
   const status = el("div", `padding:7px 12px;font:${MONO};color:${C.green};border-bottom:1px solid ${C.border};`, "connecting…");
 
@@ -266,6 +311,13 @@ export function createSidebar(): Sidebar {
       if (collapsed) pulse("reaction");
     },
     setInvite: (url) => { inviteUrl = url; },
+    setConnectionQuality: (quality, rttMs) => {
+      const icon = qualityToIcon(quality);
+      renderBars(headerBars, icon, 1);
+      renderBars(sphereBars, icon, 0.5);
+      const ms = rttMs != null ? ` · ${Math.round(rttMs)} ms` : "";
+      headerBars.title = `${icon.label}${ms}. Higher latency means you may drift and re-sync more often.`;
+    },
     showPlayGate,
     hidePlayGate,
     onLeave: (cb) => { leaveCb = cb; },

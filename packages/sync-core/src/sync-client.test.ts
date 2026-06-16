@@ -60,6 +60,45 @@ describe("SyncClient", () => {
     expect(client.getOffset()).toBe(480);
   });
 
+  it("getConnectionRtt is null until the first pong, then tracks the burst minimum", () => {
+    const { latest, client, setNow } = setup();
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    expect(client.getConnectionRtt()).toBeNull(); // measuring
+    setNow(1040);
+    socket.serverSend({ type: "pong", t0: 1000, t1: 1500 }); // rtt 40
+    setNow(1020);
+    socket.serverSend({ type: "pong", t0: 1000, t1: 1490 }); // rtt 20 (best)
+    expect(client.getConnectionRtt()).toBe(20);
+  });
+
+  it("persists the RTT across a resync's sample reset, then converges to the new burst", () => {
+    const { latest, client, scheduled, setNow } = setup();
+    client.connect();
+    const socket = latest();
+    socket.emit("open");
+    setNow(1020);
+    socket.serverSend({ type: "pong", t0: 1000, t1: 1490 }); // rtt 20
+    expect(client.getConnectionRtt()).toBe(20);
+    scheduled.filter((s) => s.ms === 30000).at(-1)!.fn(); // resync clears samples...
+    expect(client.getConnectionRtt()).toBe(20); // ...but RTT must not flicker to null
+    setNow(1200);
+    socket.serverSend({ type: "pong", t0: 1000, t1: 1600 }); // rtt 200 → new burst min
+    expect(client.getConnectionRtt()).toBe(200);
+  });
+
+  it("resets the RTT to null (measuring) on a fresh connect/reconnect", () => {
+    const { latest, client, setNow } = setup();
+    client.connect();
+    latest().emit("open");
+    setNow(1020);
+    latest().serverSend({ type: "pong", t0: 1000, t1: 1490 });
+    expect(client.getConnectionRtt()).toBe(20);
+    client.connect();
+    expect(client.getConnectionRtt()).toBeNull();
+  });
+
   it("tracks the authoritative snapshot and state updates", () => {
     const { latest, client } = setup();
     client.connect();
