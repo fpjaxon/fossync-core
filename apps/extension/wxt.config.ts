@@ -19,6 +19,10 @@ export default defineConfig({
       gecko: {
         // Permanent add-on ID — AMO requires it for new submissions.
         id: "fossync@floatpoint.net",
+        // Self-hosted update manifest (see docs/superpowers/specs/
+        // 2026-06-15-self-hosted-extension-updates-design.md). Installed copies
+        // poll this; legal because we self-distribute (unlisted), not list on AMO.
+        update_url: "https://fossync.cloud/updates.json",
         // fossync collects nothing: the display name is stored locally (a
         // default-random pseudonym), and only playback control signals are sent.
         data_collection_permissions: { required: ["none"] },
