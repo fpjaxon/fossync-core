@@ -23,3 +23,8 @@ new_sqlite_classes = ["RoomDurableObject"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["RoomRegistry"]
+
+[[r2_buckets]]
+# Signed .xpi files + updates.json for self-hosted extension distribution.
+binding = "BUILDS"
+bucket_name = "fossync-builds"

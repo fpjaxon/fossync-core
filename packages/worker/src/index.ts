@@ -9,6 +9,7 @@ export const MAX_ROOMS = 20;
 export interface Env {
   ROOM: DurableObjectNamespace;
   REGISTRY: DurableObjectNamespace;
+  BUILDS: R2Bucket;
 }
 
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no ambiguous chars
