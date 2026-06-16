@@ -7,6 +7,7 @@ import { getOrCreateName, setName } from "../../src/name-store";
 import { localNameStorage } from "../../src/storage";
 import { isSupportedContentUrl } from "../../src/supported";
 import { getRelay, setRelayOrigin, resetRelay, normalizeRelayUrl } from "../../src/relay";
+import { getBrandedUrls, setBrandedUrls } from "../../src/branded-store";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const nameInput = $("name") as HTMLInputElement;
@@ -21,6 +22,8 @@ const roomLabel = $("room");
 const statusEl = $("status");
 
 let currentName = "";
+// Set by the __BRANDED__ block below (custom builds only); null otherwise.
+let brandedToggleEl: HTMLInputElement | null = null;
 
 function setStatus(text: string): void {
   statusEl.textContent = text;
@@ -81,6 +84,7 @@ async function showSettings(): Promise<void> {
   const relay = await getRelay();
   relayInput.value = relay.isOfficial ? "" : relay.httpOrigin;
   await renderRelayState();
+  if (__BRANDED__ && brandedToggleEl) brandedToggleEl.checked = await getBrandedUrls();
 }
 
 async function initName(): Promise<void> {
@@ -179,6 +183,23 @@ $("useOfficial").addEventListener("click", async () => {
   await renderRelayState();
   setStatus("using the official relay");
 });
+
+// Branded share links: custom builds only. The whole block (and its strings) is
+// dead-code-eliminated from the official build, where __BRANDED__ is false.
+if (__BRANDED__) {
+  const row = document.createElement("div");
+  row.innerHTML =
+    '<label class="toggle"><input id="branded" type="checkbox" /> Branded share links</label>' +
+    '<p class="hint">Share invites as <code>&lt;relay&gt;/j#…</code> links instead of the page URL. ' +
+    "The destination is encoded in the link and is never sent to the relay — but the relay's redirect page " +
+    "runs in your guests' browsers, so it could read where they're going. Only enable this with a relay you " +
+    "operate. Off by default.</p>";
+  settingsView.appendChild(row);
+  brandedToggleEl = row.querySelector("#branded");
+  brandedToggleEl?.addEventListener("change", () => {
+    void setBrandedUrls(brandedToggleEl!.checked).catch((e) => console.warn("save branded failed:", e));
+  });
+}
 
 void initName();
 void renderMain();

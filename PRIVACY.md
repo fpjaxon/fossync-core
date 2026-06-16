@@ -110,6 +110,23 @@ written to storage. We do not retain playback history. We do not maintain logs o
 room activity or message contents. After a room ends, there is no room data left
 for us to keep.
 
+## Branded Share Links
+
+The **official fossync extension does not create "branded" share links** (links of
+the form `fossync.cloud/j/…`). An official invite is always the page you are
+watching with the room code added to it, so anyone you send it to can see exactly
+where it leads before opening it.
+
+Branded links are an opt-in feature of **custom, self-built** copies of the
+extension only. By design they carry the destination inside the link's *fragment*,
+which browsers never send to a server — so the relay that redirects the link does
+not receive the destination in its request logs, and no destination is stored
+anywhere. Even so, the page that performs the redirect is served by a relay: if you
+use a relay you do not operate, that relay's redirect page runs in your guests'
+browsers and could read the destination they are opening. The official extension
+refuses to point branded links at a relay other than the one you trust, which is
+why the feature is not part of the official build at all.
+
 ## Planned Features
 
 ### Anonymous accounts

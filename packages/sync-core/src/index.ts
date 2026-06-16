@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./branded";
 export * from "./clock";
 export * from "./reconciler";
 export * from "./sync-client";

@@ -1,6 +1,13 @@
 import { defineConfig } from "wxt";
 
 export default defineConfig({
+  // Build flag: branded ("/j") share links are compiled in only when
+  // FOSSYNC_BRANDED=1. The official release build (scripts/release.mjs runs a
+  // plain `pnpm build`) leaves it false, so all `if (__BRANDED__)` branches are
+  // dead-code-eliminated and the feature never ships. See src/branded.ts.
+  vite: () => ({
+    define: { __BRANDED__: JSON.stringify(process.env.FOSSYNC_BRANDED === "1") },
+  }),
   manifest: {
     name: "fossync",
     description: "Start a watch party and sync the page's video.",

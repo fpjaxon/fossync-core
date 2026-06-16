@@ -3,6 +3,8 @@ import type { Participant } from "@fossync/sync-core";
 import { roomSocketUrl } from "./urls";
 import { getRelay } from "./relay";
 import { parseRoomCode, removeInvite, buildInviteUrl } from "./invite";
+import { buildShareUrl } from "./branded";
+import { getBrandedUrls } from "./branded-store";
 import { randomName } from "./name-gen";
 import { getOrCreateName } from "./name-store";
 import { localNameStorage } from "./storage";
@@ -29,6 +31,10 @@ export function startPageSync(site: SiteModule): void {
   let stopAds: (() => void) | null = null;
   let stopNav: (() => void) | null = null;
   let currentCode: string | null = null;
+  // Relay origin + branded preference, captured on connect so the invite link
+  // (which may be rebuilt on episode change) doesn't need to re-read them.
+  let relayHttpOrigin = "";
+  let brandedOn = false;
   let adPlaying = false;
   let generation = 0;
   // Feed-diff baselines; null until the room is joined (post-welcome).
@@ -107,10 +113,13 @@ export function startPageSync(site: SiteModule): void {
     currentCode = code;
     const relay = await getRelay();
     if (gen !== generation) return; // superseded
+    relayHttpOrigin = relay.httpOrigin;
+    brandedOn = __BRANDED__ && (await getBrandedUrls());
+    if (gen !== generation) return; // superseded
     console.log("[fossync] connecting to room", code, "via", roomSocketUrl(relay.wsOrigin, code));
     if (!relay.isOfficial) sidebar.showRelayWarning(relay.wsOrigin);
     sidebar.setRoom(code);
-    sidebar.setInvite(window.location.href);
+    sidebar.setInvite(buildShareUrl(cleanUrl(window.location.href), code, relayHttpOrigin, brandedOn));
     sidebar.setStatus("● looking for video…");
     sidebar.show();
     const video = await site.findVideo();
@@ -148,7 +157,7 @@ export function startPageSync(site: SiteModule): void {
     const clean = cleanUrl(url);
     const withCode = buildInviteUrl(clean, currentCode);
     if (window.location.href !== withCode) history.replaceState(null, "", withCode); // re-add the room code Crunchyroll dropped
-    sidebar.setInvite(withCode);
+    sidebar.setInvite(buildShareUrl(clean, currentCode, relayHttpOrigin, brandedOn));
     client.setContent(clean); // server gates by control mode + resets the timeline
     detachVideo();
     void reattach(generation);

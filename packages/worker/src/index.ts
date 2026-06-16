@@ -1,6 +1,7 @@
 import { RoomDurableObject } from "./room-do";
 import { RoomRegistry } from "./registry-do";
 import { pickLatest, type UpdatesManifest } from "./updates";
+import { decodeBranded } from "@fossync/sync-core";
 
 export { RoomDurableObject, RoomRegistry };
 
@@ -35,6 +36,66 @@ function registry(env: Env): DurableObjectStub {
   return env.REGISTRY.get(env.REGISTRY.idFromName("global"));
 }
 
+// Static "branded" redirect page served at /j. A branded invite encodes the real
+// destination + room code in the URL *fragment* (see @fossync/sync-core/branded),
+// which browsers never put in the HTTP request — so this worker receives only the
+// bare GET /j and learns nothing about where the visitor is going. The page reads
+// the fragment client-side and redirects to `<pageUrl>#vsync=CODE`.
+//
+// `decodeBranded`'s own source is embedded verbatim, so the redirect logic here
+// can never drift from the extension's encoder. It is self-contained and rejects
+// any non-https destination (open-redirect / javascript:-URL guard).
+const JOIN_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>fossync</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+         background: #0e0e12; color: #e7e7ee;
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 34rem; padding: 2rem; text-align: center; }
+  h1 { margin: 0 0 .75rem; font-size: 1.6rem; letter-spacing: -0.02em; }
+  #dest { color: #a9a9b8; word-break: break-all; font-size: 13px; }
+  a { color: #7c9cff; }
+  .err { color: #ffb4a9; }
+</style>
+</head>
+<body>
+<main>
+  <h1>fossync</h1>
+  <p id="msg">Opening your watch party…</p>
+  <p id="dest"></p>
+  <p id="go" hidden><a id="link" rel="noreferrer">Continue →</a></p>
+  <noscript>This invite opens with JavaScript. The destination is encoded in the
+  link itself and is never sent to fossync.</noscript>
+</main>
+<script>
+var decodeBranded = ${decodeBranded.toString()};
+(function () {
+  var msg = document.getElementById("msg");
+  var dest = document.getElementById("dest");
+  var d = decodeBranded(location.hash);
+  if (!d) {
+    msg.className = "err";
+    msg.textContent = "This invite link is invalid or points somewhere unsafe, so it was not opened.";
+    return;
+  }
+  var target = d.url + "#vsync=" + d.code;
+  dest.textContent = d.url;
+  var link = document.getElementById("link");
+  link.href = target;
+  document.getElementById("go").hidden = false;
+  msg.textContent = "Taking you to:";
+  location.replace(target);
+})();
+</script>
+</body>
+</html>`;
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -55,6 +116,20 @@ export default {
         return Response.json({ error: "at_capacity" }, { status: 503, headers: cors });
       }
       return Response.json({ code: genCode() }, { headers: cors });
+    }
+
+    // Branded invite redirect. The destination lives in the fragment (never sent
+    // here), so this is a fixed static page; the client-side script does the work.
+    if (url.pathname === "/j") {
+      return new Response(JOIN_PAGE, {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          // Don't leak fossync.cloud as the referrer to the destination site.
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
     }
 
     // --- Self-hosted extension distribution (R2 bucket: fossync-builds) ---
