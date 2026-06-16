@@ -1,0 +1,15 @@
+fossync
+Copyright (c) Floatpoint, LLC.
+
+This product bundles third-party assets under their own licenses:
+
+Noto Animated Emoji
+-------------------
+The animated reaction emoji in apps/extension/public/emoji/ (joy, heart,
+open_mouth, clap, fire) are derived from Google's Noto Animated Emoji, resized
+from the original 512px animated WebP to 128px.
+
+Source:  https://googlefonts.github.io/noto-emoji-animation/
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+         https://creativecommons.org/licenses/by/4.0/
+Credit:  "Noto Animated Emoji" by Google, licensed under CC BY 4.0.

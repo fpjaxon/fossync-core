@@ -13,8 +13,9 @@
       }
       .top { display: flex; align-items: center; gap: 8px; padding: 11px 12px; border-bottom: 1px solid #2a2a30; }
       .brand { font-weight: 700; color: #fff; flex: 1; }
-      .icon-btn { background: none; border: none; color: #9a9aa2; font-size: 16px; cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1; }
+      .icon-btn { background: none; border: none; color: #9a9aa2; font-size: 16px; cursor: pointer; padding: 2px 7px; border-radius: 6px; line-height: 1; transition: color .15s ease, background .15s ease; }
       .icon-btn:hover { color: #e8e8ea; background: #23232a; }
+      .icon-btn:focus-visible { outline: none; color: #e8e8ea; box-shadow: 0 0 0 3px rgba(61,220,132,.25); }
       .pad { padding: 12px; }
       .hidden { display: none; }
       label.field { display: flex; flex-direction: column; gap: 5px; font: 12px ui-monospace, monospace; color: #9a9aa2; margin-bottom: 11px; }
@@ -23,10 +24,14 @@
         border-radius: 8px; padding: 8px 9px; color: #e8e8ea; font: 13px system-ui, sans-serif;
       }
       input::placeholder { color: #6b6b73; }
-      .btn { background: #23232a; color: #e8e8ea; border: none; border-radius: 8px; padding: 8px 12px; font: 13px system-ui, sans-serif; cursor: pointer; }
+      input { transition: border-color .15s ease, box-shadow .15s ease; }
+      input:focus { outline: none; border-color: #3ddc84; box-shadow: 0 0 0 3px rgba(61,220,132,.18); }
+      .btn { background: #23232a; color: #e8e8ea; border: none; border-radius: 8px; padding: 8px 12px; font: 13px system-ui, sans-serif; cursor: pointer; transition: background .15s ease, transform .05s ease; }
       .btn:hover { background: #2e2e36; }
-      .btn--primary { background: #1f7a4d; color: #eafff2; }
-      .btn--primary:hover { background: #25925c; }
+      .btn:active { transform: translateY(1px); }
+      .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(61,220,132,.25); }
+      .btn--primary { background: linear-gradient(180deg, #25925c, #1f7a4d); color: #eafff2; box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 8px rgba(31,122,77,.35); }
+      .btn--primary:hover { background: linear-gradient(180deg, #2ba668, #228a56); }
       .row { display: flex; gap: 8px; align-items: center; }
       .row .btn { flex: 1; }
       .hint { font-size: 11.5px; color: #6b6b73; line-height: 1.5; margin: 9px 0 0; }

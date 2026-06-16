@@ -7,6 +7,8 @@ export default defineConfig({
     // storage: display name. activeTab: read/redirect the active tab on Start Sync.
     // hosts: the deployed worker (fossync.cloud) + harness (fossync.cloud) for injection.
     permissions: ["storage", "activeTab"],
+    // Animated reaction emoji, loaded from the content script via runtime.getURL.
+    web_accessible_resources: ["emoji/*.webp"],
     host_permissions: [
       "https://fossync.cloud/*",
       "https://harness.fossync.cloud/*",

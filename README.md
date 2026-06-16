@@ -179,3 +179,10 @@ fossync is available to the public under the
 [PolyForm Noncommercial License 1.0.0](./LICENSE): any noncommercial purpose is
 permitted. Commercial use rights are reserved exclusively by Floatpoint, LLC. For
 commercial licensing, contact jaxon@floatpoint.net.
+
+## Credits
+
+The animated reaction emoji are derived from
+[Noto Animated Emoji](https://googlefonts.github.io/noto-emoji-animation/) by Google,
+licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). See
+[NOTICE](./NOTICE) for attribution.
